@@ -30,6 +30,14 @@ CONF_SOC_SENSOR = "soc_sensor_entity"
 CONF_CHARGING_STATUS_SENSOR = "charging_status_sensor_entity"
 CONF_PLUGGED_IN_SENSOR = "plugged_in_sensor_entity"
 CONF_ENERGY_ADDED_SENSOR = "energy_added_sensor_entity"
+# Both optional together: without a tracker, or without a zone picked, no
+# location gating happens at all (same opt-out philosophy as the other
+# optional sensors) — set both to only charge while the vehicle is inside
+# the chosen zone, e.g. so a charge slot starting while the car is out
+# doesn't just do nothing to a switch entity that isn't even connected to
+# anything at that location.
+CONF_LOCATION_TRACKER_ENTITY = "location_tracker_entity"
+CONF_HOME_ZONE_ENTITY = "home_zone_entity"
 CONF_CHARGE_POWER_KW = "charge_power_kw"
 CONF_PRICE_SOURCE = "price_source"
 CONF_TIBBER_HOME_NICKNAME = "tibber_home_nickname"

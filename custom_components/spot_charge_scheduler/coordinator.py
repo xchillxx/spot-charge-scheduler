@@ -17,6 +17,8 @@ from .const import (
     CONF_CHARGE_SWITCH,
     CONF_CHARGING_STATUS_SENSOR,
     CONF_ENERGY_ADDED_SENSOR,
+    CONF_HOME_ZONE_ENTITY,
+    CONF_LOCATION_TRACKER_ENTITY,
     CONF_PLUGGED_IN_SENSOR,
     CONF_PRICE_SOURCE,
     CONF_SOC_SENSOR,
@@ -51,6 +53,22 @@ def _get_bool_state(hass: HomeAssistant, entity_id: str | None) -> bool | None:
     if state is None or state.state in ("unknown", "unavailable"):
         return None
     return state.state == "on"
+
+
+def _get_is_home(hass: HomeAssistant, tracker_entity: str | None, zone_entity: str | None) -> bool | None:
+    """None when location gating isn't configured (both fields optional and
+    only meaningful together) — callers must not gate on that as False."""
+    if not tracker_entity or not zone_entity:
+        return None
+    tracker_state = hass.states.get(tracker_entity)
+    if tracker_state is None or tracker_state.state in ("unknown", "unavailable"):
+        return None
+    # A device_tracker's state is the object_id of whichever zone it's
+    # currently inside (e.g. "home" for zone.home), or "not_home" — the
+    # standard HA zone-matching convention, not something this integration
+    # computes itself.
+    zone_object_id = zone_entity.split(".", 1)[1]
+    return tracker_state.state == zone_object_id
 
 
 class SpotChargeCoordinator(DataUpdateCoordinator):
@@ -124,6 +142,9 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         is_charging = _get_bool_state(self.hass, self._config.get(CONF_CHARGING_STATUS_SENSOR))
         plugged_in = _get_bool_state(self.hass, self._config.get(CONF_PLUGGED_IN_SENSOR))
         energy_added = _get_float_state(self.hass, self._config.get(CONF_ENERGY_ADDED_SENSOR))
+        is_home = _get_is_home(
+            self.hass, self._config.get(CONF_LOCATION_TRACKER_ENTITY), self._config.get(CONF_HOME_ZONE_ENTITY)
+        )
 
         if is_charging is not None:
             capacity_estimator.process_charging_edge(
@@ -138,12 +159,13 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         plan = self._compute_plan(now, target_dt, current_soc)
         self.planner_state.plan = _plan_to_dict(plan)
 
-        await self._actuate_switch(plan, current_soc, plugged_in, now, target_dt)
+        await self._actuate_switch(plan, current_soc, plugged_in, is_home, now, target_dt)
 
         return {
             "current_soc": current_soc,
             "is_charging": is_charging,
             "plugged_in": plugged_in,
+            "is_home": is_home,
             "target_soc": self.planner_state.target_soc,
             "target_datetime": target_dt,
             "rhythm_days": self.planner_state.rhythm_days,
@@ -219,13 +241,14 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         plan: ChargePlan,
         current_soc: float | None,
         plugged_in: bool | None,
+        is_home: bool | None,
         now: datetime,
         target_dt: datetime | None,
     ) -> None:
         if not self.planner_state.master_switch_on:
             return  # hands-off: don't touch the charge switch at all
 
-        desired_on = self._decide_desired_state(plan, current_soc, plugged_in, now, target_dt)
+        desired_on = self._decide_desired_state(plan, current_soc, plugged_in, is_home, now, target_dt)
 
         switch_entity = self._config[CONF_CHARGE_SWITCH]
         current_state = self.hass.states.get(switch_entity)
@@ -245,12 +268,20 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         plan: ChargePlan,
         current_soc: float | None,
         plugged_in: bool | None,
+        is_home: bool | None,
         now: datetime,
         target_dt: datetime | None,
     ) -> bool:
         if current_soc is not None and current_soc >= self.planner_state.target_soc:
             return False
         if plugged_in is False:
+            return False
+        if is_home is False:
+            # Location gating configured and the vehicle isn't in the
+            # chosen zone right now — never mind the schedule, there's
+            # nothing to charge here. Checked even in the past-deadline
+            # fallback below, since forcing a switch on remotely with
+            # nothing connected accomplishes nothing.
             return False
         if target_dt is not None and now >= target_dt:
             # Deadline already blown and target not met: best-effort charge

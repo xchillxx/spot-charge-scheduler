@@ -60,6 +60,8 @@ Settings → Devices & Services → Add Integration → "Spot Charge Scheduler".
 | Charging status sensor | no | binary; drives the capacity calibrator's session detection |
 | Plugged-in sensor | no | binary; without it, "not connected" is never checked |
 | Energy added sensor | no | enables capacity self-calibration |
+| Vehicle location tracker | no | `device_tracker.*`; paired with the zone below, only charges while the vehicle is actually there |
+| Home zone | no | any `zone.*`, e.g. `zone.home` — requires the tracker above to have any effect |
 | Assumed charging power (kW) | yes | used to size how many slots are needed; the actual charge switch's own current/amperage is left untouched |
 | Price source | yes | only "Tibber" today |
 | Tibber home nickname | yes | as shown in the Tibber app, e.g. "Haus" |
@@ -76,7 +78,7 @@ All fields are editable later via the integration's "Configure" option.
 | Wiederhol-Rhythmus | `number` | Days between cycles; auto-advances Ziel-Zeitpunkt once its time has passed |
 | Akkukapazität | `number` | Capacity used for planning; auto-overwritten by the calibrator |
 | Lademodus aktiv | `switch` | Master switch — only while on does this integration touch the charge switch |
-| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`) + attributes: next slots, estimated cost, estimated completion |
+| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`) + attributes: next slots, estimated cost, estimated completion |
 | Nächster Zyklus | `sensor` | Timestamp of the currently active/next target |
 | Kalibrierte Kapazität | `sensor` | The calibrator's current estimate + how many sessions it's based on |
 

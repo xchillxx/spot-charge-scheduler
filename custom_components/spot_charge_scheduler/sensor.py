@@ -57,6 +57,8 @@ class ChargePlanSensor(_BaseSensor):
             "current_soc"
         ] >= self.coordinator.data["target_soc"]:
             return "ziel_erreicht"
+        if self.coordinator.data.get("is_home") is False:
+            return "nicht_zuhause"
         return "erreichbar" if plan.target_reachable else "nicht_erreichbar"
 
     @property

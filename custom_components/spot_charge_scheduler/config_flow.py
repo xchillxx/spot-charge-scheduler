@@ -15,6 +15,8 @@ from .const import (
     CONF_CHARGE_SWITCH,
     CONF_CHARGING_STATUS_SENSOR,
     CONF_ENERGY_ADDED_SENSOR,
+    CONF_HOME_ZONE_ENTITY,
+    CONF_LOCATION_TRACKER_ENTITY,
     CONF_PLUGGED_IN_SENSOR,
     CONF_PRICE_SOURCE,
     CONF_SOC_SENSOR,
@@ -50,6 +52,12 @@ def _schema(defaults: dict | None = None) -> vol.Schema:
         vol.Optional(
             CONF_ENERGY_ADDED_SENSOR, **_default(d, CONF_ENERGY_ADDED_SENSOR)
         ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+        vol.Optional(
+            CONF_LOCATION_TRACKER_ENTITY, **_default(d, CONF_LOCATION_TRACKER_ENTITY)
+        ): selector.EntitySelector(selector.EntitySelectorConfig(domain="device_tracker")),
+        vol.Optional(
+            CONF_HOME_ZONE_ENTITY, **_default(d, CONF_HOME_ZONE_ENTITY)
+        ): selector.EntitySelector(selector.EntitySelectorConfig(domain="zone")),
         vol.Required(
             CONF_CHARGE_POWER_KW, default=d.get(CONF_CHARGE_POWER_KW, 3.7)
         ): selector.NumberSelector(
