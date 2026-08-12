@@ -1,0 +1,106 @@
+"""Number entities: the live, freely-editable planning values. These read
+and write coordinator.planner_state directly (see coordinator.py's setters)
+rather than the config entry — editing them must not reload the integration
+mid-session."""
+from __future__ import annotations
+
+from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from .const import DOMAIN
+from .coordinator import SpotChargeCoordinator
+from .device import hub_device_info
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    coordinator: SpotChargeCoordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([
+        TargetSocNumber(coordinator, entry),
+        RhythmDaysNumber(coordinator, entry),
+        BatteryCapacityNumber(coordinator, entry),
+    ])
+
+
+class _BaseNumber(CoordinatorEntity[SpotChargeCoordinator], NumberEntity):
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+
+    @property
+    def device_info(self):
+        return hub_device_info(self._entry.entry_id)
+
+
+class TargetSocNumber(_BaseNumber):
+    _attr_name = "Ziel-SoC"
+    _attr_icon = "mdi:battery-charging-80"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_target_soc"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.target_soc
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_target_soc(value)
+
+
+class RhythmDaysNumber(_BaseNumber):
+    _attr_name = "Wiederhol-Rhythmus"
+    _attr_icon = "mdi:calendar-refresh"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 30
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "d"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_rhythm_days"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.rhythm_days
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_rhythm_days(int(value))
+
+
+class BatteryCapacityNumber(_BaseNumber):
+    """Used for plan sizing; overwritten automatically once the self-
+    calibrating estimator (see capacity_estimator.py) has enough real
+    charge sessions to trust — see sensor.py's diagnostic counterpart for
+    how many samples that estimate is currently based on."""
+
+    _attr_name = "Akkukapazität"
+    _attr_icon = "mdi:battery-high"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 200
+    _attr_native_step = 0.1
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_battery_capacity"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.battery_capacity_kwh
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_battery_capacity_kwh(value)

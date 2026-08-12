@@ -1,0 +1,45 @@
+"""Constants for Spot Charge Scheduler."""
+from __future__ import annotations
+
+DOMAIN = "spot_charge_scheduler"
+PLATFORMS = ["sensor", "number", "datetime", "switch"]
+
+UPDATE_INTERVAL_SECONDS = 60
+
+# How often (minimum spacing) we're willing to call a price-source's fetch,
+# even if our cached data doesn't yet cover the target — avoids hammering
+# the service every 60s while waiting for tomorrow's prices to be published.
+PRICE_FETCH_MIN_INTERVAL_SECONDS = 15 * 60
+
+# Below this SoC delta (%), a charge session is too short/noisy to trust for
+# capacity calibration (e.g. a session interrupted seconds after starting).
+MIN_CALIBRATION_DELTA_SOC = 5.0
+# Number of most-recent calibration samples kept; the estimate is their
+# median, so one bad session can't skew it the way a mean would.
+MAX_CALIBRATION_SAMPLES = 20
+# Calibration only takes over from the config-provided default once this
+# many independent sessions have been observed.
+MIN_CALIBRATION_SAMPLES_TO_TRUST = 3
+
+# Config-entry keys (set via config flow, edited via options flow) — these
+# describe *which entities* the integration talks to, not the live planning
+# state (target SoC/time/etc. live in a separate Store, see planner_state.py,
+# so editing them doesn't reload the whole integration mid-session).
+CONF_CHARGE_SWITCH = "charge_switch_entity"
+CONF_SOC_SENSOR = "soc_sensor_entity"
+CONF_CHARGING_STATUS_SENSOR = "charging_status_sensor_entity"
+CONF_PLUGGED_IN_SENSOR = "plugged_in_sensor_entity"
+CONF_ENERGY_ADDED_SENSOR = "energy_added_sensor_entity"
+CONF_CHARGE_POWER_KW = "charge_power_kw"
+CONF_PRICE_SOURCE = "price_source"
+CONF_TIBBER_HOME_NICKNAME = "tibber_home_nickname"
+CONF_BATTERY_CAPACITY_KWH_DEFAULT = "battery_capacity_kwh_default"
+
+PRICE_SOURCE_TIBBER = "tibber"
+# Only Tibber is implemented today (see price_source.py) — kept as a select
+# rather than hardcoded so a second provider (e.g. a generic day-ahead/EPEX
+# sensor) can be added later without changing the config flow shape.
+PRICE_SOURCES = [PRICE_SOURCE_TIBBER]
+
+DEFAULT_TARGET_SOC = 50.0
+DEFAULT_RHYTHM_DAYS = 4

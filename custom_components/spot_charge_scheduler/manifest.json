@@ -1,0 +1,12 @@
+{
+  "domain": "spot_charge_scheduler",
+  "name": "Spot Charge Scheduler",
+  "codeowners": ["@xchillxx"],
+  "config_flow": true,
+  "documentation": "https://github.com/xchillxx/spot-charge-scheduler",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/xchillxx/spot-charge-scheduler/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

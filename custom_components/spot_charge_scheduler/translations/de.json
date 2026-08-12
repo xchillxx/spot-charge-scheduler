@@ -1,0 +1,49 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Spot Charge Scheduler einrichten",
+        "description": "Wähle die Entitäten, die dein Fahrzeug-Laden steuern/melden.",
+        "data": {
+          "charge_switch_entity": "Lade Start/Stopp-Schalter",
+          "soc_sensor_entity": "Ladezustand-Sensor (%)",
+          "charging_status_sensor_entity": "Lädt-gerade-Sensor (optional, binär)",
+          "plugged_in_sensor_entity": "Angeschlossen-Sensor (optional, binär)",
+          "energy_added_sensor_entity": "Geladene-Energie-Sensor (optional, ermöglicht selbstkalibrierende Kapazität)",
+          "charge_power_kw": "Angenommene Ladeleistung (kW)",
+          "price_source": "Preisquelle",
+          "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
+          "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"
+        }
+      }
+    },
+    "error": {
+      "unknown": "Unerwarteter Fehler"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Spot Charge Scheduler Optionen",
+        "data": {
+          "charge_switch_entity": "Lade Start/Stopp-Schalter",
+          "soc_sensor_entity": "Ladezustand-Sensor (%)",
+          "charging_status_sensor_entity": "Lädt-gerade-Sensor (optional, binär)",
+          "plugged_in_sensor_entity": "Angeschlossen-Sensor (optional, binär)",
+          "energy_added_sensor_entity": "Geladene-Energie-Sensor (optional, ermöglicht selbstkalibrierende Kapazität)",
+          "charge_power_kw": "Angenommene Ladeleistung (kW)",
+          "price_source": "Preisquelle",
+          "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
+          "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"
+        }
+      }
+    }
+  },
+  "selector": {
+    "price_source": {
+      "options": {
+        "tibber": "Tibber"
+      }
+    }
+  }
+}
