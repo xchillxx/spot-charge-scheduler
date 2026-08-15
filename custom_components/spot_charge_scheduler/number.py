@@ -19,11 +19,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: SpotChargeCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
-        TargetSocNumber(coordinator, entry),
-        RhythmDaysNumber(coordinator, entry),
-        BatteryCapacityNumber(coordinator, entry),
-    ])
+    async_add_entities([BatteryCapacityNumber(coordinator, entry)])
 
 
 class _BaseNumber(CoordinatorEntity[SpotChargeCoordinator], NumberEntity):
@@ -36,48 +32,6 @@ class _BaseNumber(CoordinatorEntity[SpotChargeCoordinator], NumberEntity):
     @property
     def device_info(self):
         return hub_device_info(self._entry.entry_id)
-
-
-class TargetSocNumber(_BaseNumber):
-    _attr_name = "Ziel-SoC"
-    _attr_icon = "mdi:battery-charging-80"
-    _attr_native_min_value = 1
-    _attr_native_max_value = 100
-    _attr_native_step = 1
-    _attr_native_unit_of_measurement = "%"
-    _attr_mode = NumberMode.SLIDER
-
-    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_target_soc"
-
-    @property
-    def native_value(self) -> float:
-        return self.coordinator.planner_state.target_soc
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator.async_set_target_soc(value)
-
-
-class RhythmDaysNumber(_BaseNumber):
-    _attr_name = "Wiederhol-Rhythmus"
-    _attr_icon = "mdi:calendar-refresh"
-    _attr_native_min_value = 1
-    _attr_native_max_value = 30
-    _attr_native_step = 1
-    _attr_native_unit_of_measurement = "d"
-    _attr_mode = NumberMode.BOX
-
-    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_rhythm_days"
-
-    @property
-    def native_value(self) -> float:
-        return self.coordinator.planner_state.rhythm_days
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator.async_set_rhythm_days(int(value))
 
 
 class BatteryCapacityNumber(_BaseNumber):

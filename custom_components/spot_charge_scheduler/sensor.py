@@ -68,7 +68,9 @@ class ChargePlanSensor(_BaseSensor):
         plan = self.coordinator.data.get("plan")
         if plan is None:
             return {}
+        active = self.coordinator.data.get("active_occurrence")
         return {
+            "aktiver_zyklus": active.summary if active else None,
             "naechste_slots": [
                 {"start": s.start.isoformat(), "preis_eur_kwh": s.price} for s in plan.slots
             ],

@@ -1,13 +1,22 @@
-"""Live planning state: target SoC/time, rhythm, capacity calibration, and
-the currently computed plan.
+"""Live planning state: charge cycles (recurring or one-off), per-occurrence
+overrides, capacity calibration, and the currently computed plan.
 
 Deliberately NOT stored in the config entry's `entry.data` the way SLS's
 number entities do it: those trigger a full integration reload on every
 write (fine for rarely-changed setup fields like "which switch entity",
-wrong for a value like "target SoC" that's meant to be tweaked freely and
-must survive across an active charge session without interrupting it). This
-lives in its own Store instead, and entities write straight into the
-in-memory dict + ask the coordinator to recompute — no reload involved.
+wrong for something meant to be edited freely — dragging a calendar event
+around must not interrupt an active charge session via a reload). This
+lives in its own Store instead, and entities/the calendar write straight
+into the in-memory dict + ask the coordinator to recompute — no reload
+involved.
+
+A "cycle" is a charge-target definition: target SoC, an anchor date/time,
+and an optional repeat interval in days (0/None = one-off, e.g. an ad-hoc
+"I need to leave early" addition). See schedule.py for how cycles get
+expanded into concrete calendar occurrences and how a per-occurrence
+override (a dragged/rescheduled single instance) is layered on top without
+disturbing the rest of the series — the same exception model any calendar
+app uses for "edit this occurrence only".
 """
 from __future__ import annotations
 
@@ -17,14 +26,12 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import (
-    DEFAULT_RHYTHM_DAYS,
-    DEFAULT_TARGET_SOC,
-    MAX_CALIBRATION_SAMPLES,
-    MIN_CALIBRATION_SAMPLES_TO_TRUST,
-)
+from .const import MAX_CALIBRATION_SAMPLES, MIN_CALIBRATION_SAMPLES_TO_TRUST
 
-STORAGE_VERSION = 1
+STORAGE_VERSION = 1  # unchanged on purpose — see async_load, old/new fields
+# coexist fine via .get()-with-default; no async_migrate_func needed, and
+# bumping the version without one risks Store raising on the existing live
+# Store file instead of just handing back the old dict.
 SAVE_DELAY_SECONDS = 10
 
 
@@ -34,9 +41,14 @@ class PlannerState:
     def __init__(self, hass: HomeAssistant, entry_id: str, default_capacity_kwh: float) -> None:
         self._store: Store = Store(hass, STORAGE_VERSION, f"spot_charge_scheduler_{entry_id}")
         self._default_capacity_kwh = default_capacity_kwh
-        self.target_soc: float = DEFAULT_TARGET_SOC
-        self.target_datetime: str | None = None  # ISO string, set by the user on first use
-        self.rhythm_days: int = DEFAULT_RHYTHM_DAYS
+        # Each: {id, summary, target_soc, anchor (ISO datetime), rhythm_days
+        # (int, 0 = one-off)}. See schedule.py for expansion into occurrences.
+        self.cycles: list[dict[str, Any]] = []
+        # Keyed by f"{cycle_id}::{original_occurrence_start_iso}" (the
+        # *unshifted* anchor-aligned time — stable so a re-dragged event
+        # updates the same override instead of accumulating duplicates).
+        # Value: {"start": new_start_iso | None, "deleted": bool}.
+        self.occurrence_overrides: dict[str, dict[str, Any]] = {}
         self.battery_capacity_kwh: float = default_capacity_kwh
         self.capacity_samples: list[float] = []
         self.master_switch_on: bool = False
@@ -58,9 +70,8 @@ class PlannerState:
         data = await self._store.async_load()
         if not data:
             return
-        self.target_soc = data.get("target_soc", self.target_soc)
-        self.target_datetime = data.get("target_datetime")
-        self.rhythm_days = data.get("rhythm_days", self.rhythm_days)
+        self.cycles = data.get("cycles", [])
+        self.occurrence_overrides = data.get("occurrence_overrides", {})
         self.battery_capacity_kwh = data.get("battery_capacity_kwh", self._default_capacity_kwh)
         self.capacity_samples = data.get("capacity_samples", [])
         self.master_switch_on = data.get("master_switch_on", False)
@@ -89,9 +100,8 @@ class PlannerState:
 
     def _data_to_save(self) -> dict:
         return {
-            "target_soc": self.target_soc,
-            "target_datetime": self.target_datetime,
-            "rhythm_days": self.rhythm_days,
+            "cycles": self.cycles,
+            "occurrence_overrides": self.occurrence_overrides,
             "battery_capacity_kwh": self.battery_capacity_kwh,
             "capacity_samples": self.capacity_samples,
             "master_switch_on": self.master_switch_on,

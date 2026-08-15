@@ -17,19 +17,27 @@ be added later behind the same `price_source.py` interface.
 
 ## What it does
 
-- You set a target SoC and a target date/time (native `number`/`datetime`
-  entities this integration creates — no separate helpers to set up).
-- It fetches Tibber's day-ahead 15-minute prices for the window between now
-  and your target, and schedules the cheapest slots that add up to enough
-  charging time.
+- Charge targets ("cycles") live on a normal Home Assistant **calendar** —
+  create one via the calendar's own "+ add event" UI: a title with a
+  percentage (e.g. "50%"), a start time, and optionally a repeat interval
+  (every N days) using the calendar's own repeat picker. That's the whole
+  setup for a recurring target — no separate helper entities.
+- Any number of cycles can be active at once, recurring or one-off (e.g. an
+  ad-hoc "I have to leave unexpectedly" addition) — they interleave
+  automatically: whichever one's deadline comes next is what gets planned
+  for.
+- Drag an event in the calendar to reschedule just that one occurrence —
+  the rest of its series is untouched, same as any calendar app's "edit
+  this event only".
+- It fetches Tibber's day-ahead 15-minute prices for the window up to
+  whichever cycle's deadline is currently active, and schedules the
+  cheapest slots that add up to enough charging time.
 - If the deadline is close enough that being picky about price would miss
   it, it automatically schedules (near-)continuous charging instead —
   meeting the target always wins over saving money.
 - Once the target SoC is reached, charging stops immediately regardless of
-  the remaining schedule.
-- After each cycle's target time passes, the next target time is
-  automatically set forward by your configured rhythm (e.g. +4 days) — edit
-  the SoC/time/rhythm at any point, they're always live.
+  the remaining schedule, and the next-earliest cycle occurrence becomes
+  the new active target.
 - A self-calibrating battery capacity estimate: instead of trusting a
   single config value, it derives real kWh capacity from your own charge
   sessions (energy added ÷ SoC delta) and uses a robust (median) rolling
@@ -73,14 +81,23 @@ All fields are editable later via the integration's "Configure" option.
 
 | Entity | Type | Purpose |
 |---|---|---|
-| Ziel-SoC | `number` | Target state of charge (%) for the current cycle |
-| Ziel-Zeitpunkt | `datetime` | Target date/time for the current cycle |
-| Wiederhol-Rhythmus | `number` | Days between cycles; auto-advances Ziel-Zeitpunkt once its time has passed |
+| Ladeplan-Kalender | `calendar` | Every charge-target cycle, recurring and one-off — create/drag/delete events here directly |
 | Akkukapazität | `number` | Capacity used for planning; auto-overwritten by the calibrator |
 | Lademodus aktiv | `switch` | Master switch — only while on does this integration touch the charge switch |
-| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`) + attributes: next slots, estimated cost, estimated completion |
-| Nächster Zyklus | `sensor` | Timestamp of the currently active/next target |
+| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`) + attributes: active cycle, next slots, estimated cost, estimated completion |
+| Nächster Zyklus | `sensor` | Timestamp of the currently active target occurrence |
 | Kalibrierte Kapazität | `sensor` | The calibrator's current estimate + how many sessions it's based on |
+
+## Calendar event conventions
+
+The calendar UI has no custom fields, so two pieces of information ride
+along in the event itself:
+- **Target SoC**: the first `NN%` found in the title or description (e.g.
+  "50%", "Ladeziel 80%"). No percentage found → falls back to 50%.
+- **Repeat interval**: the calendar's own "Repeat" option, daily or weekly
+  with a plain interval (e.g. every 4 days, every 1 week). Anything fancier
+  (specific weekdays, an end date) isn't understood and is treated as a
+  one-off instead of silently doing something else.
 
 ## License
 

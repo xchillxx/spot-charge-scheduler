@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 DOMAIN = "spot_charge_scheduler"
-PLATFORMS = ["sensor", "number", "datetime", "switch"]
+PLATFORMS = ["sensor", "number", "switch", "calendar"]
 
 UPDATE_INTERVAL_SECONDS = 60
 
@@ -50,4 +50,18 @@ PRICE_SOURCE_TIBBER = "tibber"
 PRICE_SOURCES = [PRICE_SOURCE_TIBBER]
 
 DEFAULT_TARGET_SOC = 50.0
-DEFAULT_RHYTHM_DAYS = 4
+# Fallback when a calendar event's title doesn't contain a parseable "NN%"
+# (see schedule.py's parse_target_soc_from_title) — e.g. an event created
+# via a plain "+ add event" with no title at all.
+
+# How far back/forward from "now" to expand cycle occurrences when looking
+# for the currently active target (schedule.find_active_occurrence). The
+# backward half catches a just-passed, still-unmet deadline (the "charge
+# anyway, deadline blown" fallback); the forward half only needs to reach
+# the next occurrence, but a generous window costs nothing since expansion
+# is pure in-memory arithmetic, not I/O.
+ACTIVE_LOOKBACK_DAYS = 14
+ACTIVE_LOOKAHEAD_DAYS = 60
+# How far ahead the calendar entity expands occurrences for display when
+# Home Assistant doesn't constrain the query itself (defensive cap).
+CALENDAR_MAX_LOOKAHEAD_DAYS = 365

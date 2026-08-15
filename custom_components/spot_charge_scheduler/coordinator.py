@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from . import capacity_estimator
+from . import capacity_estimator, schedule
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
     CONF_CHARGE_POWER_KW,
@@ -30,6 +30,7 @@ from .const import (
 from .planner import ChargePlan, compute_plan
 from .planner_state import PlannerState
 from .price_source import SLOT_DURATION, PricePoint, get_price_provider
+from .schedule import Occurrence
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,24 +94,53 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
     async def async_flush_state(self) -> None:
         await self.planner_state.async_save_now()
 
-    # --- entity-facing setters (bypass the config-entry reload path) ---
+    # --- entity/calendar-facing setters (bypass the config-entry reload path) ---
 
-    async def async_set_target_soc(self, value: float) -> None:
-        self.planner_state.target_soc = value
+    async def async_add_cycle(
+        self, anchor: datetime, target_soc: float, rhythm_days: int, summary: str
+    ) -> str:
+        """Create a new charge-target cycle (recurring if rhythm_days > 0,
+        one-off otherwise — e.g. an ad-hoc "I need to leave early" addition).
+        Returns the new cycle's id."""
+        cycle_id = schedule.new_cycle_id()
+        self.planner_state.cycles.append({
+            "id": cycle_id,
+            "summary": summary,
+            "target_soc": target_soc,
+            "anchor": dt_util.as_local(anchor).isoformat(),
+            "rhythm_days": rhythm_days,
+        })
+        self._invalidate_price_cache()
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+        return cycle_id
+
+    async def async_set_occurrence_start(
+        self, cycle_id: str, original_start: datetime, new_start: datetime
+    ) -> None:
+        """Reschedule ONE occurrence of a (possibly recurring) cycle — the
+        rest of the series is untouched, same as dragging a single instance
+        in any calendar app."""
+        key = schedule.override_key(cycle_id, original_start)
+        override = self.planner_state.occurrence_overrides.setdefault(key, {})
+        override["start"] = dt_util.as_local(new_start).isoformat()
+        override.pop("deleted", None)
+        self._invalidate_price_cache()
         self.planner_state.async_save()
         await self.async_request_refresh()
 
-    async def async_set_target_datetime(self, value: datetime) -> None:
-        self.planner_state.target_datetime = value.isoformat()
+    async def async_delete_occurrence(self, cycle_id: str, original_start: datetime) -> None:
+        key = schedule.override_key(cycle_id, original_start)
+        self.planner_state.occurrence_overrides[key] = {"deleted": True}
+        self._invalidate_price_cache()
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
+    def _invalidate_price_cache(self) -> None:
+        # Any change to the schedule can change which deadline is active,
+        # which changes the price window that needs fetching.
         self._cached_prices = []
         self._last_price_fetch = None
-        self.planner_state.async_save()
-        await self.async_request_refresh()
-
-    async def async_set_rhythm_days(self, value: int) -> None:
-        self.planner_state.rhythm_days = value
-        self.planner_state.async_save()
-        await self.async_request_refresh()
 
     async def async_set_battery_capacity_kwh(self, value: float) -> None:
         self.planner_state.battery_capacity_kwh = value
@@ -136,7 +166,6 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict:
         now = dt_util.now()
-        self._advance_target_if_elapsed(now)
 
         current_soc = _get_float_state(self.hass, self._config[CONF_SOC_SENSOR])
         is_charging = _get_bool_state(self.hass, self._config.get(CONF_CHARGING_STATUS_SENSOR))
@@ -152,54 +181,37 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             )
             self._was_charging = is_charging
 
-        target_dt = self._target_datetime()
+        # Which occurrence (across all cycles) we're planning/charging
+        # toward right now — see schedule.find_active_occurrence for how
+        # several independent recurring cycles interleave without any
+        # explicit "advance to next" step; it's always freshly derived.
+        active: Occurrence | None = schedule.find_active_occurrence(
+            self.planner_state.cycles, self.planner_state.occurrence_overrides, now, current_soc
+        )
+        target_dt = active.start if active else None
+        target_soc = active.target_soc if active else None
+
         if target_dt is not None:
             await self._maybe_fetch_prices(now, target_dt)
 
-        plan = self._compute_plan(now, target_dt, current_soc)
+        plan = self._compute_plan(now, target_dt, target_soc, current_soc)
         self.planner_state.plan = _plan_to_dict(plan)
 
-        await self._actuate_switch(plan, current_soc, plugged_in, is_home, now, target_dt)
+        await self._actuate_switch(plan, current_soc, target_soc, plugged_in, is_home, now, target_dt)
 
         return {
             "current_soc": current_soc,
             "is_charging": is_charging,
             "plugged_in": plugged_in,
             "is_home": is_home,
-            "target_soc": self.planner_state.target_soc,
+            "active_occurrence": active,
+            "target_soc": target_soc,
             "target_datetime": target_dt,
-            "rhythm_days": self.planner_state.rhythm_days,
             "battery_capacity_kwh": self.planner_state.battery_capacity_kwh,
             "capacity_sample_count": len(self.planner_state.capacity_samples),
             "master_switch_on": self.planner_state.master_switch_on,
             "plan": plan,
         }
-
-    def _target_datetime(self) -> datetime | None:
-        if self.planner_state.target_datetime is None:
-            return None
-        return dt_util.parse_datetime(self.planner_state.target_datetime)
-
-    def _advance_target_if_elapsed(self, now: datetime) -> None:
-        """Roll the target forward by the rhythm once its time has passed.
-
-        Loops (not a single +=) so a target left unattended past several
-        rhythm periods (e.g. the addon was reloaded/HA was down) lands on
-        the next one still in the future, not one still stuck in the past.
-        """
-        target_dt = self._target_datetime()
-        if target_dt is None:
-            return
-        advanced = False
-        while now >= target_dt:
-            target_dt = target_dt + timedelta(days=self.planner_state.rhythm_days)
-            advanced = True
-        if advanced:
-            _LOGGER.debug("Target elapsed, advancing to %s", target_dt.isoformat())
-            self.planner_state.target_datetime = target_dt.isoformat()
-            self._cached_prices = []
-            self._last_price_fetch = None
-            self.planner_state.async_save()
 
     async def _maybe_fetch_prices(self, now: datetime, target_dt: datetime) -> None:
         cache_covers_target = bool(self._cached_prices) and (
@@ -219,9 +231,13 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             self._last_price_fetch = now
 
     def _compute_plan(
-        self, now: datetime, target_dt: datetime | None, current_soc: float | None
+        self,
+        now: datetime,
+        target_dt: datetime | None,
+        target_soc: float | None,
+        current_soc: float | None,
     ) -> ChargePlan:
-        if target_dt is None or current_soc is None:
+        if target_dt is None or target_soc is None or current_soc is None:
             return ChargePlan(
                 slots=[], estimated_cost_eur=0.0, estimated_completion=None,
                 target_reachable=None, required_slot_count=0, available_slot_count=0,
@@ -229,7 +245,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         return compute_plan(
             now=now,
             target_datetime=target_dt,
-            target_soc=self.planner_state.target_soc,
+            target_soc=target_soc,
             current_soc=current_soc,
             battery_capacity_kwh=self.planner_state.battery_capacity_kwh,
             charge_power_kw=self._config[CONF_CHARGE_POWER_KW],
@@ -240,6 +256,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self,
         plan: ChargePlan,
         current_soc: float | None,
+        target_soc: float | None,
         plugged_in: bool | None,
         is_home: bool | None,
         now: datetime,
@@ -248,7 +265,9 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         if not self.planner_state.master_switch_on:
             return  # hands-off: don't touch the charge switch at all
 
-        desired_on = self._decide_desired_state(plan, current_soc, plugged_in, is_home, now, target_dt)
+        desired_on = self._decide_desired_state(
+            plan, current_soc, target_soc, plugged_in, is_home, now, target_dt
+        )
 
         switch_entity = self._config[CONF_CHARGE_SWITCH]
         current_state = self.hass.states.get(switch_entity)
@@ -267,12 +286,15 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self,
         plan: ChargePlan,
         current_soc: float | None,
+        target_soc: float | None,
         plugged_in: bool | None,
         is_home: bool | None,
         now: datetime,
         target_dt: datetime | None,
     ) -> bool:
-        if current_soc is not None and current_soc >= self.planner_state.target_soc:
+        if target_soc is None:
+            return False  # no active occurrence at all — nothing to charge toward
+        if current_soc is not None and current_soc >= target_soc:
             return False
         if plugged_in is False:
             return False
