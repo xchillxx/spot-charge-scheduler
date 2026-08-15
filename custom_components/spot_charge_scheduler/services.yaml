@@ -1,0 +1,42 @@
+add_cycle:
+  name: Ladeziel hinzufügen
+  description: >-
+    Legt ein neues Ladeziel an — einmalig oder wiederkehrend. Erscheint danach
+    sofort im Ladeplan-Kalender und kann dort verschoben/gelöscht werden.
+  fields:
+    start:
+      name: Zeitpunkt
+      description: Datum und Uhrzeit, zu dem das Ziel-SoC erreicht sein soll.
+      required: true
+      selector:
+        datetime:
+    target_soc:
+      name: Ziel-SoC
+      description: Ziel-Ladezustand in Prozent.
+      required: true
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    rhythm_days:
+      name: Wiederholung (Tage)
+      description: Alle wie viele Tage wiederholen. 0 = einmalig (kein Wiederholen).
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          step: 1
+          unit_of_measurement: Tage
+          mode: box
+    summary:
+      name: Titel
+      description: Optionaler Titel für den Kalendereintrag (sonst automatisch generiert).
+      required: false
+      selector:
+        text:
