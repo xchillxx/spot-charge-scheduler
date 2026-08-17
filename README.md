@@ -34,6 +34,10 @@ be added later behind the same `price_source.py` interface.
   this event only". Each cycle also gets its own "Pausiert: …" switch, for
   pausing an entire recurring series at once (e.g. over a vacation) without
   deleting/re-adding it or clicking through every individual occurrence.
+  To change target SoC or repeat interval for an entire series at once
+  (e.g. "80% was fine, 50% is enough once winter prices bite"), use the
+  `spot_charge_scheduler.update_cycle` service — it targets that same
+  "Pausiert: …" switch to identify which series to edit.
 - It fetches Tibber's day-ahead 15-minute prices for the window up to
   whichever cycle's deadline is currently active, and schedules the
   cheapest slots that add up to enough charging time — preferring

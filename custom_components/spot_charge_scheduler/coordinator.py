@@ -133,6 +133,27 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
+    async def async_update_cycle(
+        self, cycle_id: str, target_soc: float | None, rhythm_days: int | None
+    ) -> None:
+        """Change a cycle's target SoC and/or rhythm for every FUTURE
+        occurrence at once (e.g. "80% is fine now, but 50% is enough once
+        winter prices get expensive") — unlike an occurrence override,
+        which only ever affects a single dragged/deleted instance, this
+        edits the series itself. Occurrences already individually
+        rescheduled (occurrence_overrides) keep their overridden start
+        time; only the target_soc/rhythm they'd otherwise inherit changes."""
+        for cycle in self.planner_state.cycles:
+            if cycle["id"] == cycle_id:
+                if target_soc is not None:
+                    cycle["target_soc"] = target_soc
+                if rhythm_days is not None:
+                    cycle["rhythm_days"] = rhythm_days
+                break
+        self._invalidate_price_cache()
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
     async def async_set_occurrence_start(
         self, cycle_id: str, original_start: datetime, new_start: datetime
     ) -> None:

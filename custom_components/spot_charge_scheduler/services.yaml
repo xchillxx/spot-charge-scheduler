@@ -40,3 +40,41 @@ add_cycle:
       required: false
       selector:
         text:
+
+update_cycle:
+  name: Zyklus anpassen
+  description: >-
+    Ändert Ziel-SoC und/oder Wiederhol-Rhythmus für ALLE zukünftigen Termine
+    eines bestehenden Zyklus auf einmal — nicht nur einen einzelnen Termin
+    (dafür stattdessen den Termin im Kalender verschieben/löschen).
+  fields:
+    entity_id:
+      name: Zyklus
+      description: Der Pausiert-Schalter des Zyklus, den du ändern willst.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: spot_charge_scheduler
+    target_soc:
+      name: Neues Ziel-SoC
+      description: Leer lassen, um es unverändert zu lassen.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: slider
+    rhythm_days:
+      name: Neuer Wiederhol-Rhythmus (Tage)
+      description: Leer lassen, um ihn unverändert zu lassen. 0 = einmalig.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 60
+          step: 1
+          unit_of_measurement: Tage
+          mode: box
