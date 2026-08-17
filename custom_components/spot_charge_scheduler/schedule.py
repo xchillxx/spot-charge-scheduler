@@ -87,6 +87,8 @@ def rhythm_days_from_rrule(rrule: str | None) -> int:
 def _expand_cycle(
     cycle: dict, overrides: dict, window_start: datetime, window_end: datetime
 ) -> list[Occurrence]:
+    if not cycle.get("enabled", True):
+        return []  # paused (e.g. for vacation) — see coordinator.async_set_cycle_enabled
     anchor = dt_util.parse_datetime(cycle["anchor"])
     if anchor is None:
         return []

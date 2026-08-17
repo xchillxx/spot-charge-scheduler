@@ -18,20 +18,29 @@ be added later behind the same `price_source.py` interface.
 ## What it does
 
 - Charge targets ("cycles") live on a normal Home Assistant **calendar** —
-  create one via the calendar's own "+ add event" UI: a title with a
-  percentage (e.g. "50%"), a start time, and optionally a repeat interval
-  (every N days) using the calendar's own repeat picker. That's the whole
-  setup for a recurring target — no separate helper entities.
+  each is a title with a percentage (e.g. "50%"), a start time, and
+  optionally a repeat interval (every N days). That's the whole setup for
+  a recurring target — no separate helper entities. Create one via the
+  `spot_charge_scheduler.add_cycle` service (Developer Tools → Actions
+  auto-generates a proper datetime/percentage/repeat-interval form from
+  it) — not the calendar card's own "+" button, which HA core briefly had
+  and then regressed (removed between 2026.2.0 and 2026.3.0).
 - Any number of cycles can be active at once, recurring or one-off (e.g. an
   ad-hoc "I have to leave unexpectedly" addition) — they interleave
   automatically: whichever one's deadline comes next is what gets planned
   for.
 - Drag an event in the calendar to reschedule just that one occurrence —
   the rest of its series is untouched, same as any calendar app's "edit
-  this event only".
+  this event only". Each cycle also gets its own "Pausiert: …" switch, for
+  pausing an entire recurring series at once (e.g. over a vacation) without
+  deleting/re-adding it or clicking through every individual occurrence.
 - It fetches Tibber's day-ahead 15-minute prices for the window up to
   whichever cycle's deadline is currently active, and schedules the
-  cheapest slots that add up to enough charging time.
+  cheapest slots that add up to enough charging time — preferring
+  contiguous blocks over switching on/off every 15 minutes to chase a
+  fraction-of-a-cent difference (gaps of up to 30 min between two selected
+  slots get bridged regardless of that gap's own price; relay wear costs
+  more than the odd cent).
 - If the deadline is close enough that being picky about price would miss
   it, it automatically schedules (near-)continuous charging instead —
   meeting the target always wins over saving money.

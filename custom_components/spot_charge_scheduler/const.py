@@ -49,6 +49,14 @@ PRICE_SOURCE_TIBBER = "tibber"
 # sensor) can be added later without changing the config flow shape.
 PRICE_SOURCES = [PRICE_SOURCE_TIBBER]
 
+# Selecting the N cheapest slots by raw price alone can fragment into many
+# isolated slots when nearby prices differ by a fraction of a cent — cheaper
+# on paper, but relay/contactor wear from switching every 15 min is worth
+# more than that. Gaps of up to this many slots between two selected ones
+# get bridged (charged through) unconditionally, regardless of that gap's
+# own price — see planner.py's _bridge_short_gaps.
+MAX_GAP_SLOTS_TO_BRIDGE = 2
+
 DEFAULT_TARGET_SOC = 50.0
 # Fallback when a calendar event's title doesn't contain a parseable "NN%"
 # (see schedule.py's parse_target_soc_from_title) — e.g. an event created

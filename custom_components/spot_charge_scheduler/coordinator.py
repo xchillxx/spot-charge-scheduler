@@ -109,11 +109,25 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "target_soc": target_soc,
             "anchor": dt_util.as_local(anchor).isoformat(),
             "rhythm_days": rhythm_days,
+            "enabled": True,
         })
         self._invalidate_price_cache()
         self.planner_state.async_save()
         await self.async_request_refresh()
         return cycle_id
+
+    async def async_set_cycle_enabled(self, cycle_id: str, enabled: bool) -> None:
+        """Pause/resume an entire recurring series (e.g. for vacation) —
+        unlike deleting an occurrence, this doesn't touch any individual
+        instance, so resuming brings back every occurrence exactly as
+        scheduled, including ones that would have fired while paused."""
+        for cycle in self.planner_state.cycles:
+            if cycle["id"] == cycle_id:
+                cycle["enabled"] = enabled
+                break
+        self._invalidate_price_cache()
+        self.planner_state.async_save()
+        await self.async_request_refresh()
 
     async def async_set_occurrence_start(
         self, cycle_id: str, original_start: datetime, new_start: datetime

@@ -19,6 +19,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
+from .const import MAX_GAP_SLOTS_TO_BRIDGE
 from .price_source import SLOT_DURATION, PricePoint
 
 SLOT_HOURS = SLOT_DURATION.total_seconds() / 3600
@@ -32,6 +33,29 @@ class ChargePlan:
     target_reachable: bool | None  # None = no target set, nothing to evaluate yet
     required_slot_count: int
     available_slot_count: int
+
+
+def _bridge_short_gaps(
+    eligible_sorted: list[PricePoint], selected_starts: set[datetime], max_gap_slots: int
+) -> set[datetime]:
+    """Fill in short unselected gaps between two selected slots, so the
+    charger runs through a couple of merely-slightly-pricier slots instead
+    of switching off for 15-30 min to save a fraction of a cent. Only looks
+    backward from each confirmed-selected slot to the previous one, so a
+    single forward pass is enough — no gap ever needs re-checking once
+    filled, since filling only ever shrinks later gaps, never creates new
+    ones to reconsider."""
+    selected_flags = [p.start in selected_starts for p in eligible_sorted]
+    last_selected_index = -1
+    for i, is_selected in enumerate(selected_flags):
+        if not is_selected:
+            continue
+        gap = i - last_selected_index - 1
+        if last_selected_index != -1 and 0 < gap <= max_gap_slots:
+            for k in range(last_selected_index + 1, i):
+                selected_flags[k] = True
+        last_selected_index = i
+    return {p.start for p, flag in zip(eligible_sorted, selected_flags) if flag}
 
 
 def compute_plan(
@@ -72,7 +96,11 @@ def compute_plan(
         selected = list(eligible)
         target_reachable = False
 
-    selected.sort(key=lambda p: p.start)
+    eligible_sorted = sorted(eligible, key=lambda p: p.start)
+    bridged_starts = _bridge_short_gaps(
+        eligible_sorted, {p.start for p in selected}, MAX_GAP_SLOTS_TO_BRIDGE
+    )
+    selected = [p for p in eligible_sorted if p.start in bridged_starts]
     estimated_cost_eur = sum(p.price * slot_kwh for p in selected)
     estimated_completion = (selected[-1].start + SLOT_DURATION) if selected else None
 
