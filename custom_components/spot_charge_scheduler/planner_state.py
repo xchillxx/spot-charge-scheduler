@@ -63,6 +63,10 @@ class PlannerState:
         self.session_start_soc: float | None = None
         self.session_start_energy_added: float | None = None
         self.session_power_readings: list[float] = []
+        # Rolling per-slot price archive: [{"start": iso, "price": float}],
+        # built up by the coordinator from its own price fetches — see
+        # price_baseline.py.
+        self.price_history: list[dict[str, Any]] = []
         # Most recently computed plan (coordinator.py owns recomputing this;
         # this class only stores/persists the result for the sensor to read).
         self.plan: dict[str, Any] = {
@@ -87,6 +91,7 @@ class PlannerState:
         self.session_start_soc = data.get("session_start_soc")
         self.session_start_energy_added = data.get("session_start_energy_added")
         self.session_power_readings = data.get("session_power_readings", [])
+        self.price_history = data.get("price_history", [])
         self.plan = data.get("plan", self.plan)
 
     def add_calibration_sample(self, implied_capacity_kwh: float) -> None:
@@ -130,5 +135,6 @@ class PlannerState:
             "session_start_soc": self.session_start_soc,
             "session_start_energy_added": self.session_start_energy_added,
             "session_power_readings": self.session_power_readings,
+            "price_history": self.price_history,
             "plan": self.plan,
         }

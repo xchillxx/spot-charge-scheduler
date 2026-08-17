@@ -88,3 +88,31 @@ ACTIVE_LOOKAHEAD_DAYS = 60
 # How far ahead the calendar entity expands occurrences for display when
 # Home Assistant doesn't constrain the query itself (defensive cap).
 CALENDAR_MAX_LOOKAHEAD_DAYS = 365
+
+# --- Data-completeness / "wait for better price data" gating ---
+# Tibber publishes the next day's prices sometime in the afternoon — before
+# that, a target beyond "today" is only visible through a partial window
+# (today's remaining hours), and committing to "cheapest so far" can mean
+# charging through a merely-okay afternoon slot instead of a much cheaper
+# overnight one that simply isn't known yet. Hold off actuating (not
+# planning — the plan/estimate stays visible) while data is incomplete, as
+# long as there's at least this many hours of slack beyond what's strictly
+# required — i.e. waiting can't itself cause the deadline to be missed.
+# Tunable: shrink it if data usually arrives sooner than assumed here.
+DATA_WAIT_SAFETY_BUFFER_HOURS = 12.0
+
+# Rolling per-slot price archive (planner_state.price_history) built from
+# every price fetch this integration already makes — used to judge whether
+# today's visible prices are unusually high vs. typical for this time of
+# day, refining the wait-for-data decision above (see price_baseline.py).
+# No dependency on any specific price-sensor entity; starts empty and
+# matures over about a week.
+PRICE_HISTORY_RETENTION_DAYS = 10
+PRICE_HISTORY_LOOKBACK_DAYS = 7
+# Matched against the same minute-of-day across those days, +/- this many
+# minutes (~1.5 fifteen-minute slots) to allow for slight fetch-timing
+# jitter without pulling in a meaningfully different hour.
+PRICE_HISTORY_TIME_TOLERANCE_MINUTES = 22
+# Need at least this many historical samples at a given time-of-day before
+# trusting their median as "typical" — early on, the archive is too sparse.
+PRICE_HISTORY_MIN_SAMPLES = 3

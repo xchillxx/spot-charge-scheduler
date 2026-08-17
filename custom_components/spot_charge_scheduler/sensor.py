@@ -60,6 +60,8 @@ class ChargePlanSensor(_BaseSensor):
             return "ziel_erreicht"
         if self.coordinator.data.get("is_home") is False:
             return "nicht_zuhause"
+        if self.coordinator.data.get("defer_for_data"):
+            return "wartet_auf_daten"
         return "erreichbar" if plan.target_reachable else "nicht_erreichbar"
 
     @property

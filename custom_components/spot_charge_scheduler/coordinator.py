@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from . import capacity_estimator, schedule
+from . import capacity_estimator, price_baseline, readiness, schedule
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
     CONF_CHARGE_POWER_KW,
@@ -221,7 +221,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         plan = self._compute_plan(now, target_dt, target_soc, current_soc)
         self.planner_state.plan = _plan_to_dict(plan)
 
-        await self._actuate_switch(plan, current_soc, target_soc, plugged_in, is_home, now, target_dt)
+        defer_for_data = self._should_defer_for_data(now, target_dt, plan)
+
+        await self._actuate_switch(
+            plan, current_soc, target_soc, plugged_in, is_home, defer_for_data, now, target_dt
+        )
 
         return {
             "current_soc": current_soc,
@@ -231,6 +235,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "active_occurrence": active,
             "target_soc": target_soc,
             "target_datetime": target_dt,
+            "defer_for_data": defer_for_data,
             "battery_capacity_kwh": self.planner_state.battery_capacity_kwh,
             "capacity_sample_count": len(self.planner_state.capacity_samples),
             "charge_power_kw": self.planner_state.charge_power_kw,
@@ -251,10 +256,35 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             return
         try:
             self._cached_prices = await self._price_provider.async_get_prices(self.hass, now, target_dt)
+            self.planner_state.price_history = price_baseline.merge_observations(
+                self.planner_state.price_history, self._cached_prices, now
+            )
+            self.planner_state.async_save()
         except Exception:  # noqa: BLE001 - a failed fetch must not crash the cycle
             _LOGGER.exception("Failed to fetch prices")
         finally:
             self._last_price_fetch = now
+
+    def _should_defer_for_data(
+        self, now: datetime, target_dt: datetime | None, plan: ChargePlan
+    ) -> bool:
+        """See readiness.py. Only meaningful with an actual target and a
+        real plan (plan.required_slot_count/target_reachable are None when
+        there's no active occurrence at all)."""
+        if target_dt is None or plan.target_reachable is None or plan.required_slot_count == 0:
+            return False
+        data_covers_target = bool(self._cached_prices) and (
+            self._cached_prices[-1].start + SLOT_DURATION >= target_dt
+        )
+        eligible_prices = [p.price for p in self._cached_prices if now <= p.start < target_dt]
+        best_known_price = min(eligible_prices) if eligible_prices else None
+        historical_typical_price = price_baseline.typical_price_for_time_of_day(
+            self.planner_state.price_history, now
+        )
+        return readiness.should_defer_for_better_data(
+            now, target_dt, plan.required_slot_count, data_covers_target,
+            best_known_price, historical_typical_price,
+        )
 
     def _compute_plan(
         self,
@@ -285,6 +315,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         target_soc: float | None,
         plugged_in: bool | None,
         is_home: bool | None,
+        defer_for_data: bool,
         now: datetime,
         target_dt: datetime | None,
     ) -> None:
@@ -292,7 +323,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             return  # hands-off: don't touch the charge switch at all
 
         desired_on = self._decide_desired_state(
-            plan, current_soc, target_soc, plugged_in, is_home, now, target_dt
+            plan, current_soc, target_soc, plugged_in, is_home, defer_for_data, now, target_dt
         )
 
         switch_entity = self._config[CONF_CHARGE_SWITCH]
@@ -315,12 +346,20 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         target_soc: float | None,
         plugged_in: bool | None,
         is_home: bool | None,
+        defer_for_data: bool,
         now: datetime,
         target_dt: datetime | None,
     ) -> bool:
         if target_soc is None:
             return False  # no active occurrence at all — nothing to charge toward
         if current_soc is not None and current_soc >= target_soc:
+            return False
+        if defer_for_data:
+            # Price data doesn't cover the full window yet, and there's
+            # provably enough slack to wait for it without risking the
+            # deadline — see readiness.py. Once that stops being true
+            # (deadline gets close, or fuller/better-looking data arrives),
+            # this flips back to False on its own next cycle.
             return False
         if plugged_in is False:
             return False

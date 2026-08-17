@@ -44,6 +44,14 @@ be added later behind the same `price_source.py` interface.
 - If the deadline is close enough that being picky about price would miss
   it, it automatically schedules (near-)continuous charging instead —
   meeting the target always wins over saving money.
+- Won't jump on today's cheapest-looking slots if the price data doesn't
+  cover the full window yet (e.g. a target tomorrow morning, checked
+  before tomorrow's prices are published) — it waits for fuller data
+  first, as long as waiting can't itself risk the deadline. It also builds
+  its own rolling week of observed prices to judge whether today's visible
+  prices are unusually high for this time of day vs. that history, and
+  waits longer in that case even once *some* data is technically
+  available; a below-typical price is charged on right away instead.
 - Once the target SoC is reached, charging stops immediately regardless of
   the remaining schedule, and the next-earliest cycle occurrence becomes
   the new active target.
@@ -97,7 +105,7 @@ All fields are editable later via the integration's "Configure" option.
 | Ladeleistung | `number` | Charging power used for planning; auto-overwritten by the calibrator once a power sensor is set |
 | Lademodus aktiv | `switch` | Master switch — only while on does this integration touch the charge switch |
 | Pausiert: \<cycle summary\> | `switch` | One per cycle, created dynamically — pause/resume an entire recurring series at once |
-| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`) + attributes: active cycle, next slots, estimated cost, estimated completion |
+| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`/`wartet_auf_daten`) + attributes: active cycle, next slots, estimated cost, estimated completion |
 | Nächster Zyklus | `sensor` | Timestamp of the currently active target occurrence |
 | Kalibrierte Kapazität | `sensor` | The calibrator's current capacity estimate + how many sessions it's based on |
 | Kalibrierte Ladeleistung | `sensor` | The calibrator's current power estimate + how many sessions it's based on |
