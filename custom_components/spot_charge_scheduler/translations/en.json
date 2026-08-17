@@ -12,7 +12,8 @@
           "energy_added_sensor_entity": "Energy added sensor (optional, enables self-calibrating capacity)",
           "location_tracker_entity": "Vehicle location tracker (optional, together with the zone below only charges while home)",
           "home_zone_entity": "Zone the vehicle must be in to charge (optional, requires the tracker above)",
-          "charge_power_kw": "Assumed charging power (kW)",
+          "charge_power_kw": "Assumed charging power (kW) - starting value, self-calibrated once a power sensor is set",
+          "charge_power_sensor_entity": "Live charging power sensor (optional, enables self-calibration)",
           "price_source": "Price source",
           "tibber_home_nickname": "Tibber home nickname (as shown in the Tibber app)",
           "battery_capacity_kwh_default": "Battery capacity (kWh) — starting estimate, refined automatically over time"
@@ -35,7 +36,8 @@
           "energy_added_sensor_entity": "Energy added sensor (optional, enables self-calibrating capacity)",
           "location_tracker_entity": "Vehicle location tracker (optional, together with the zone below only charges while home)",
           "home_zone_entity": "Zone the vehicle must be in to charge (optional, requires the tracker above)",
-          "charge_power_kw": "Assumed charging power (kW)",
+          "charge_power_kw": "Assumed charging power (kW) - starting value, self-calibrated once a power sensor is set",
+          "charge_power_sensor_entity": "Live charging power sensor (optional, enables self-calibration)",
           "price_source": "Price source",
           "tibber_home_nickname": "Tibber home nickname (as shown in the Tibber app)",
           "battery_capacity_kwh_default": "Battery capacity (kWh) — starting estimate, refined automatically over time"

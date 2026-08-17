@@ -1,7 +1,9 @@
-"""Self-calibrating battery capacity: derives real kWh capacity from actual
-charge sessions (energy added ÷ SoC delta) instead of relying solely on the
-config-entered estimate, which is easy to get wrong (trim/pack variants
-aren't reported anywhere in the vehicle's own entities).
+"""Self-calibrating battery capacity and charging power: derives both from
+actual charge sessions (energy added ÷ SoC delta; median observed power)
+instead of relying solely on config-entered guesses, which are easy to get
+wrong (trim/pack variants aren't reported anywhere in the vehicle's own
+entities, and real-world charging power depends on cable/breaker/amp
+settings this integration doesn't control).
 
 Mirrors the calibration philosophy already used for base-load learning in
 the surplus-load-switch integration: derive it from lived data, keep a
@@ -10,8 +12,9 @@ robust rolling estimate, never trust a single sample.
 from __future__ import annotations
 
 import logging
+from statistics import median
 
-from .const import MIN_CALIBRATION_DELTA_SOC
+from .const import MIN_CALIBRATION_DELTA_SOC, MIN_POWER_READINGS_PER_SESSION
 from .planner_state import PlannerState
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,8 +26,10 @@ def process_charging_edge(
     is_charging: bool,
     current_soc: float | None,
     current_energy_added: float | None,
+    current_power_kw: float | None,
 ) -> None:
-    """Call once per coordinator cycle with the latest charging/SoC/energy readings.
+    """Call once per coordinator cycle with the latest charging/SoC/energy/
+    power readings.
 
     was_charging is None on the very first cycle after (re)start — treated
     as "unknown", so a session already in progress at startup is picked up
@@ -39,14 +44,29 @@ def process_charging_edge(
     if session_just_started:
         planner_state.session_start_soc = current_soc
         planner_state.session_start_energy_added = current_energy_added
+        planner_state.session_power_readings = []
         planner_state.async_save()
         return
+
+    if is_charging and current_power_kw is not None and current_power_kw > 0:
+        planner_state.session_power_readings.append(current_power_kw)
 
     if session_just_ended:
         start_soc = planner_state.session_start_soc
         start_energy = planner_state.session_start_energy_added
+        power_readings = planner_state.session_power_readings
         planner_state.session_start_soc = None
         planner_state.session_start_energy_added = None
+        planner_state.session_power_readings = []
+
+        if len(power_readings) >= MIN_POWER_READINGS_PER_SESSION:
+            observed_power = median(power_readings)
+            _LOGGER.debug(
+                "Charge session ended: %d power readings -> median %.2f kW",
+                len(power_readings),
+                observed_power,
+            )
+            planner_state.add_power_sample(observed_power)
 
         if start_soc is None or start_energy is None or current_energy_added is None:
             planner_state.async_save()

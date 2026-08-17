@@ -20,6 +20,11 @@ MAX_CALIBRATION_SAMPLES = 20
 # Calibration only takes over from the config-provided default once this
 # many independent sessions have been observed.
 MIN_CALIBRATION_SAMPLES_TO_TRUST = 3
+# A charging session needs at least this many power readings (one per
+# coordinator cycle, ~60s apart) before its median is trusted as a power
+# calibration sample — otherwise a session ended seconds after starting
+# would contribute one barely-ramped-up reading.
+MIN_POWER_READINGS_PER_SESSION = 3
 
 # Config-entry keys (set via config flow, edited via options flow) — these
 # describe *which entities* the integration talks to, not the live planning
@@ -39,6 +44,13 @@ CONF_ENERGY_ADDED_SENSOR = "energy_added_sensor_entity"
 CONF_LOCATION_TRACKER_ENTITY = "location_tracker_entity"
 CONF_HOME_ZONE_ENTITY = "home_zone_entity"
 CONF_CHARGE_POWER_KW = "charge_power_kw"
+# Optional: a live power sensor (kW) that reports actual draw while
+# charging (e.g. sensor.model_3_charger_power — not a "rate" sensor, which
+# on Tesla reports distance/hour added, not power). When set, the assumed
+# charging power for planning is self-calibrated from real sessions'
+# median power instead of staying pinned to the static config value —
+# same philosophy as the battery-capacity calibrator.
+CONF_CHARGE_POWER_SENSOR = "charge_power_sensor_entity"
 CONF_PRICE_SOURCE = "price_source"
 CONF_TIBBER_HOME_NICKNAME = "tibber_home_nickname"
 CONF_BATTERY_CAPACITY_KWH_DEFAULT = "battery_capacity_kwh_default"
@@ -52,10 +64,13 @@ PRICE_SOURCES = [PRICE_SOURCE_TIBBER]
 # Selecting the N cheapest slots by raw price alone can fragment into many
 # isolated slots when nearby prices differ by a fraction of a cent — cheaper
 # on paper, but relay/contactor wear from switching every 15 min is worth
-# more than that. Gaps of up to this many slots between two selected ones
-# get bridged (charged through) unconditionally, regardless of that gap's
-# own price — see planner.py's _bridge_short_gaps.
-MAX_GAP_SLOTS_TO_BRIDGE = 2
+# more than that. A gap between two selected slots is bridged (charged
+# through, no matter how long) as long as every slot in it costs no more
+# than this fraction above the priciest slot already selected — i.e. "I'm
+# already paying up to X, so filling the gap for at most X*1.05 is a
+# rounding error, not a real cost decision". See planner.py's
+# _bridge_gaps_by_price.
+PRICE_BRIDGE_TOLERANCE = 0.05
 
 DEFAULT_TARGET_SOC = 50.0
 # Fallback when a calendar event's title doesn't contain a parseable "NN%"

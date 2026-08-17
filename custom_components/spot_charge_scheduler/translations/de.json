@@ -12,7 +12,8 @@
           "energy_added_sensor_entity": "Geladene-Energie-Sensor (optional, ermöglicht selbstkalibrierende Kapazität)",
           "location_tracker_entity": "Standort-Tracker des Fahrzeugs (optional, zusammen mit der Zone unten lädt nur zuhause)",
           "home_zone_entity": "Zone, in der sich das Fahrzeug befinden muss (optional, braucht den Tracker oben)",
-          "charge_power_kw": "Angenommene Ladeleistung (kW)",
+          "charge_power_kw": "Angenommene Ladeleistung (kW) — Startwert, wird bei gesetztem Leistungssensor automatisch kalibriert",
+          "charge_power_sensor_entity": "Live-Ladeleistung-Sensor (optional, ermöglicht Selbstkalibrierung)",
           "price_source": "Preisquelle",
           "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
           "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"
@@ -35,7 +36,8 @@
           "energy_added_sensor_entity": "Geladene-Energie-Sensor (optional, ermöglicht selbstkalibrierende Kapazität)",
           "location_tracker_entity": "Standort-Tracker des Fahrzeugs (optional, zusammen mit der Zone unten lädt nur zuhause)",
           "home_zone_entity": "Zone, in der sich das Fahrzeug befinden muss (optional, braucht den Tracker oben)",
-          "charge_power_kw": "Angenommene Ladeleistung (kW)",
+          "charge_power_kw": "Angenommene Ladeleistung (kW) — Startwert, wird bei gesetztem Leistungssensor automatisch kalibriert",
+          "charge_power_sensor_entity": "Live-Ladeleistung-Sensor (optional, ermöglicht Selbstkalibrierung)",
           "price_source": "Preisquelle",
           "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
           "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"

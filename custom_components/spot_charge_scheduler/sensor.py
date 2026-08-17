@@ -23,6 +23,7 @@ async def async_setup_entry(
         ChargePlanSensor(coordinator, entry),
         NextCycleSensor(coordinator, entry),
         CalibratedCapacitySensor(coordinator, entry),
+        CalibratedChargePowerSensor(coordinator, entry),
     ])
 
 
@@ -116,3 +117,21 @@ class CalibratedCapacitySensor(_BaseSensor):
     @property
     def extra_state_attributes(self):
         return {"anzahl_ladevorgaenge": len(self.coordinator.planner_state.capacity_samples)}
+
+
+class CalibratedChargePowerSensor(_BaseSensor):
+    _attr_name = "Kalibrierte Ladeleistung"
+    _attr_icon = "mdi:ev-station"
+    _attr_native_unit_of_measurement = "kW"
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_calibrated_charge_power"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.charge_power_kw
+
+    @property
+    def extra_state_attributes(self):
+        return {"anzahl_ladevorgaenge": len(self.coordinator.planner_state.power_samples)}

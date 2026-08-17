@@ -1,5 +1,5 @@
 """Live planning state: charge cycles (recurring or one-off), per-occurrence
-overrides, capacity calibration, and the currently computed plan.
+overrides, capacity/power calibration, and the currently computed plan.
 
 Deliberately NOT stored in the config entry's `entry.data` the way SLS's
 number entities do it: those trigger a full integration reload on every
@@ -38,11 +38,15 @@ SAVE_DELAY_SECONDS = 10
 class PlannerState:
     """Mutable planning state for one config entry, persisted via Store."""
 
-    def __init__(self, hass: HomeAssistant, entry_id: str, default_capacity_kwh: float) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry_id: str, default_capacity_kwh: float, default_charge_power_kw: float
+    ) -> None:
         self._store: Store = Store(hass, STORAGE_VERSION, f"spot_charge_scheduler_{entry_id}")
         self._default_capacity_kwh = default_capacity_kwh
+        self._default_charge_power_kw = default_charge_power_kw
         # Each: {id, summary, target_soc, anchor (ISO datetime), rhythm_days
-        # (int, 0 = one-off)}. See schedule.py for expansion into occurrences.
+        # (int, 0 = one-off), enabled}. See schedule.py for expansion into
+        # occurrences.
         self.cycles: list[dict[str, Any]] = []
         # Keyed by f"{cycle_id}::{original_occurrence_start_iso}" (the
         # *unshifted* anchor-aligned time — stable so a re-dragged event
@@ -51,11 +55,14 @@ class PlannerState:
         self.occurrence_overrides: dict[str, dict[str, Any]] = {}
         self.battery_capacity_kwh: float = default_capacity_kwh
         self.capacity_samples: list[float] = []
+        self.charge_power_kw: float = default_charge_power_kw
+        self.power_samples: list[float] = []
         self.master_switch_on: bool = False
-        # Charge-session edge tracking for capacity calibration (see
-        # capacity_estimator.py) — None when no session is currently open.
+        # Charge-session edge tracking for capacity/power calibration (see
+        # capacity_estimator.py) — None/empty when no session is open.
         self.session_start_soc: float | None = None
         self.session_start_energy_added: float | None = None
+        self.session_power_readings: list[float] = []
         # Most recently computed plan (coordinator.py owns recomputing this;
         # this class only stores/persists the result for the sensor to read).
         self.plan: dict[str, Any] = {
@@ -74,9 +81,12 @@ class PlannerState:
         self.occurrence_overrides = data.get("occurrence_overrides", {})
         self.battery_capacity_kwh = data.get("battery_capacity_kwh", self._default_capacity_kwh)
         self.capacity_samples = data.get("capacity_samples", [])
+        self.charge_power_kw = data.get("charge_power_kw", self._default_charge_power_kw)
+        self.power_samples = data.get("power_samples", [])
         self.master_switch_on = data.get("master_switch_on", False)
         self.session_start_soc = data.get("session_start_soc")
         self.session_start_energy_added = data.get("session_start_energy_added")
+        self.session_power_readings = data.get("session_power_readings", [])
         self.plan = data.get("plan", self.plan)
 
     def add_calibration_sample(self, implied_capacity_kwh: float) -> None:
@@ -92,6 +102,16 @@ class PlannerState:
             self.battery_capacity_kwh = round(median(self.capacity_samples), 2)
         self.async_save()
 
+    def add_power_sample(self, observed_power_kw: float) -> None:
+        """Same robust-median approach as add_calibration_sample, applied
+        to the actually-observed charging power instead of the static
+        config guess."""
+        self.power_samples.append(observed_power_kw)
+        self.power_samples = self.power_samples[-MAX_CALIBRATION_SAMPLES:]
+        if len(self.power_samples) >= MIN_CALIBRATION_SAMPLES_TO_TRUST:
+            self.charge_power_kw = round(median(self.power_samples), 2)
+        self.async_save()
+
     def async_save(self) -> None:
         self._store.async_delay_save(self._data_to_save, SAVE_DELAY_SECONDS)
 
@@ -104,8 +124,11 @@ class PlannerState:
             "occurrence_overrides": self.occurrence_overrides,
             "battery_capacity_kwh": self.battery_capacity_kwh,
             "capacity_samples": self.capacity_samples,
+            "charge_power_kw": self.charge_power_kw,
+            "power_samples": self.power_samples,
             "master_switch_on": self.master_switch_on,
             "session_start_soc": self.session_start_soc,
             "session_start_energy_added": self.session_start_energy_added,
+            "session_power_readings": self.session_power_readings,
             "plan": self.plan,
         }

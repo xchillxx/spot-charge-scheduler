@@ -47,10 +47,11 @@ be added later behind the same `price_source.py` interface.
 - Once the target SoC is reached, charging stops immediately regardless of
   the remaining schedule, and the next-earliest cycle occurrence becomes
   the new active target.
-- A self-calibrating battery capacity estimate: instead of trusting a
-  single config value, it derives real kWh capacity from your own charge
-  sessions (energy added ÷ SoC delta) and uses a robust (median) rolling
-  estimate once it has enough of them.
+- Self-calibrating battery capacity **and** charging power estimates:
+  instead of trusting the config-entered guesses, it derives real kWh
+  capacity (energy added ÷ SoC delta) and real charging power (median
+  observed power per session) from your own charge sessions, and uses a
+  robust (median) rolling estimate once it has enough of them.
 - A manual master switch. **This integration never auto-detects or
   auto-switches against a PV-surplus charging setup** — flip it on
   yourself once you've switched your wallbox/car out of solar-surplus mode
@@ -79,7 +80,8 @@ Settings → Devices & Services → Add Integration → "Spot Charge Scheduler".
 | Energy added sensor | no | enables capacity self-calibration |
 | Vehicle location tracker | no | `device_tracker.*`; paired with the zone below, only charges while the vehicle is actually there |
 | Home zone | no | any `zone.*`, e.g. `zone.home` — requires the tracker above to have any effect |
-| Assumed charging power (kW) | yes | used to size how many slots are needed; the actual charge switch's own current/amperage is left untouched |
+| Assumed charging power (kW) | yes | starting value; self-calibrated over time once the sensor below is set |
+| Live charging power sensor | no | e.g. `sensor.model_3_charger_power` — a real **power** sensor (kW), not a "rate" sensor (distance/hour); enables power self-calibration |
 | Price source | yes | only "Tibber" today |
 | Tibber home nickname | yes | as shown in the Tibber app, e.g. "Haus" |
 | Battery capacity (kWh) | yes | starting estimate; overwritten automatically once enough real sessions are observed |
@@ -92,10 +94,13 @@ All fields are editable later via the integration's "Configure" option.
 |---|---|---|
 | Ladeplan-Kalender | `calendar` | Every charge-target cycle, recurring and one-off — create/drag/delete events here directly |
 | Akkukapazität | `number` | Capacity used for planning; auto-overwritten by the calibrator |
+| Ladeleistung | `number` | Charging power used for planning; auto-overwritten by the calibrator once a power sensor is set |
 | Lademodus aktiv | `switch` | Master switch — only while on does this integration touch the charge switch |
+| Pausiert: \<cycle summary\> | `switch` | One per cycle, created dynamically — pause/resume an entire recurring series at once |
 | Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`) + attributes: active cycle, next slots, estimated cost, estimated completion |
 | Nächster Zyklus | `sensor` | Timestamp of the currently active target occurrence |
-| Kalibrierte Kapazität | `sensor` | The calibrator's current estimate + how many sessions it's based on |
+| Kalibrierte Kapazität | `sensor` | The calibrator's current capacity estimate + how many sessions it's based on |
+| Kalibrierte Ladeleistung | `sensor` | The calibrator's current power estimate + how many sessions it's based on |
 
 ## Calendar event conventions
 

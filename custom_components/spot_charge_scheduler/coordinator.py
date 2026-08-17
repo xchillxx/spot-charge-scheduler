@@ -14,6 +14,7 @@ from . import capacity_estimator, schedule
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
     CONF_CHARGE_POWER_KW,
+    CONF_CHARGE_POWER_SENSOR,
     CONF_CHARGE_SWITCH,
     CONF_CHARGING_STATUS_SENSOR,
     CONF_ENERGY_ADDED_SENSOR,
@@ -79,7 +80,10 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         )
         self._config = config
         self.planner_state = PlannerState(
-            hass, entry_id, default_capacity_kwh=config[CONF_BATTERY_CAPACITY_KWH_DEFAULT]
+            hass,
+            entry_id,
+            default_capacity_kwh=config[CONF_BATTERY_CAPACITY_KWH_DEFAULT],
+            default_charge_power_kw=config[CONF_CHARGE_POWER_KW],
         )
         self._price_provider = get_price_provider(
             config[CONF_PRICE_SOURCE], config[CONF_TIBBER_HOME_NICKNAME]
@@ -161,6 +165,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
+    async def async_set_charge_power_kw(self, value: float) -> None:
+        self.planner_state.charge_power_kw = value
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
     async def async_set_master_switch(self, value: bool) -> None:
         self.planner_state.master_switch_on = value
         self.planner_state.async_save()
@@ -185,13 +194,14 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         is_charging = _get_bool_state(self.hass, self._config.get(CONF_CHARGING_STATUS_SENSOR))
         plugged_in = _get_bool_state(self.hass, self._config.get(CONF_PLUGGED_IN_SENSOR))
         energy_added = _get_float_state(self.hass, self._config.get(CONF_ENERGY_ADDED_SENSOR))
+        current_power_kw = _get_float_state(self.hass, self._config.get(CONF_CHARGE_POWER_SENSOR))
         is_home = _get_is_home(
             self.hass, self._config.get(CONF_LOCATION_TRACKER_ENTITY), self._config.get(CONF_HOME_ZONE_ENTITY)
         )
 
         if is_charging is not None:
             capacity_estimator.process_charging_edge(
-                self.planner_state, self._was_charging, is_charging, current_soc, energy_added
+                self.planner_state, self._was_charging, is_charging, current_soc, energy_added, current_power_kw
             )
             self._was_charging = is_charging
 
@@ -223,6 +233,8 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "target_datetime": target_dt,
             "battery_capacity_kwh": self.planner_state.battery_capacity_kwh,
             "capacity_sample_count": len(self.planner_state.capacity_samples),
+            "charge_power_kw": self.planner_state.charge_power_kw,
+            "power_sample_count": len(self.planner_state.power_samples),
             "master_switch_on": self.planner_state.master_switch_on,
             "plan": plan,
         }
@@ -262,7 +274,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             target_soc=target_soc,
             current_soc=current_soc,
             battery_capacity_kwh=self.planner_state.battery_capacity_kwh,
-            charge_power_kw=self._config[CONF_CHARGE_POWER_KW],
+            charge_power_kw=self.planner_state.charge_power_kw,
             price_points=self._cached_prices,
         )
 

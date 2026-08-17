@@ -19,7 +19,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: SpotChargeCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BatteryCapacityNumber(coordinator, entry)])
+    async_add_entities([BatteryCapacityNumber(coordinator, entry), ChargePowerNumber(coordinator, entry)])
 
 
 class _BaseNumber(CoordinatorEntity[SpotChargeCoordinator], NumberEntity):
@@ -58,3 +58,30 @@ class BatteryCapacityNumber(_BaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_battery_capacity_kwh(value)
+
+
+class ChargePowerNumber(_BaseNumber):
+    """Used for plan sizing (how many slots are needed); overwritten
+    automatically once the self-calibrating estimator has enough real
+    charge sessions to trust, same as BatteryCapacityNumber — only kicks in
+    when a charge-power sensor is configured, otherwise stays at the
+    config default forever."""
+
+    _attr_name = "Ladeleistung"
+    _attr_icon = "mdi:ev-station"
+    _attr_native_min_value = 0.1
+    _attr_native_max_value = 50
+    _attr_native_step = 0.1
+    _attr_native_unit_of_measurement = "kW"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_charge_power"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.charge_power_kw
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_charge_power_kw(value)

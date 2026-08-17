@@ -19,7 +19,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 
-from .const import MAX_GAP_SLOTS_TO_BRIDGE
+from .const import PRICE_BRIDGE_TOLERANCE
 from .price_source import SLOT_DURATION, PricePoint
 
 SLOT_HOURS = SLOT_DURATION.total_seconds() / 3600
@@ -35,27 +35,39 @@ class ChargePlan:
     available_slot_count: int
 
 
-def _bridge_short_gaps(
-    eligible_sorted: list[PricePoint], selected_starts: set[datetime], max_gap_slots: int
+def _bridge_gaps_by_price(
+    eligible_sorted: list[PricePoint], selected: list[PricePoint], tolerance: float
 ) -> set[datetime]:
-    """Fill in short unselected gaps between two selected slots, so the
-    charger runs through a couple of merely-slightly-pricier slots instead
-    of switching off for 15-30 min to save a fraction of a cent. Only looks
-    backward from each confirmed-selected slot to the previous one, so a
-    single forward pass is enough — no gap ever needs re-checking once
-    filled, since filling only ever shrinks later gaps, never creates new
-    ones to reconsider."""
-    selected_flags = [p.start in selected_starts for p in eligible_sorted]
+    """Fill in unselected gaps between two selected slots, so the charger
+    runs through a couple of merely-slightly-pricier slots instead of
+    switching off to save a fraction of a cent. A gap is bridged in full —
+    no length limit — as long as EVERY slot in it costs no more than
+    `tolerance` above the priciest slot already selected: we're already
+    paying up to that price, so the gap isn't a new cost decision, just
+    rounding. A genuinely expensive stretch (e.g. an evening peak) stays
+    unbridged regardless of length, since some slot in it will exceed the
+    tolerance.
+
+    Only looks backward from each confirmed-selected slot to the previous
+    one, so a single forward pass is enough — filling a gap only ever
+    shrinks later gaps, never creates new ones to reconsider."""
+    if not selected:
+        return set()
+    threshold = max(p.price for p in selected) * (1 + tolerance)
+    selected_starts = {p.start for p in selected}
+    flags = [p.start in selected_starts for p in eligible_sorted]
     last_selected_index = -1
-    for i, is_selected in enumerate(selected_flags):
+    for i, is_selected in enumerate(flags):
         if not is_selected:
             continue
-        gap = i - last_selected_index - 1
-        if last_selected_index != -1 and 0 < gap <= max_gap_slots:
-            for k in range(last_selected_index + 1, i):
-                selected_flags[k] = True
+        gap_range = range(last_selected_index + 1, i)
+        if last_selected_index != -1 and gap_range and all(
+            eligible_sorted[k].price <= threshold for k in gap_range
+        ):
+            for k in gap_range:
+                flags[k] = True
         last_selected_index = i
-    return {p.start for p, flag in zip(eligible_sorted, selected_flags) if flag}
+    return {p.start for p, flag in zip(eligible_sorted, flags) if flag}
 
 
 def compute_plan(
@@ -97,9 +109,7 @@ def compute_plan(
         target_reachable = False
 
     eligible_sorted = sorted(eligible, key=lambda p: p.start)
-    bridged_starts = _bridge_short_gaps(
-        eligible_sorted, {p.start for p in selected}, MAX_GAP_SLOTS_TO_BRIDGE
-    )
+    bridged_starts = _bridge_gaps_by_price(eligible_sorted, selected, PRICE_BRIDGE_TOLERANCE)
     selected = [p for p in eligible_sorted if p.start in bridged_starts]
     estimated_cost_eur = sum(p.price * slot_kwh for p in selected)
     estimated_completion = (selected[-1].start + SLOT_DURATION) if selected else None
