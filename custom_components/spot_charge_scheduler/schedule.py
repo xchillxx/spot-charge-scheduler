@@ -68,6 +68,21 @@ def parse_target_soc_from_text(*texts: str | None, default: float = DEFAULT_TARG
     return default
 
 
+def _display_summary(custom_summary: str | None, target_soc: float) -> str:
+    """The target SoC must always be visible wherever a cycle shows up
+    (calendar title, sensor attributes) — it's the one thing every
+    occurrence is fundamentally about. Cycles created through the calendar
+    UI already have it baked into their title (that's how the % got
+    parsed out in the first place); cycles created via the add_cycle
+    service with a plain name (e.g. "Tagschicht") don't, so it's appended
+    unless already present."""
+    if not custom_summary:
+        return f"Ladeziel {target_soc:g}%"
+    if _PERCENT_RE.search(custom_summary):
+        return custom_summary
+    return f"{custom_summary} ({target_soc:g}%)"
+
+
 def rhythm_days_from_rrule(rrule: str | None) -> int:
     """Only FREQ=DAILY/WEEKLY with a plain INTERVAL is understood — this
     integration's whole recurrence model is "every N days", nothing
@@ -95,7 +110,7 @@ def _expand_cycle(
     rhythm = int(cycle.get("rhythm_days") or 0)
     cycle_id = cycle["id"]
     target_soc = float(cycle["target_soc"])
-    summary = cycle.get("summary") or f"Ladeziel {target_soc:g}%"
+    summary = _display_summary(cycle.get("summary"), target_soc)
 
     candidates: list[datetime] = []
     if rhythm > 0:

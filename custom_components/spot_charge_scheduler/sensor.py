@@ -102,6 +102,15 @@ class NextCycleSensor(_BaseSensor):
         target_dt = self.coordinator.data.get("target_datetime")
         return dt_util.as_utc(target_dt) if target_dt else None
 
+    @property
+    def extra_state_attributes(self):
+        if not self.coordinator.data:
+            return {}
+        active = self.coordinator.data.get("active_occurrence")
+        if not active:
+            return {}
+        return {"ziel_soc": active.target_soc, "titel": active.summary}
+
 
 class CalibratedCapacitySensor(_BaseSensor):
     _attr_name = "Kalibrierte Kapazität"

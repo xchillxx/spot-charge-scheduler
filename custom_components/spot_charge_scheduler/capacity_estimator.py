@@ -1,18 +1,26 @@
 """Self-calibrating battery capacity and charging power: derives both from
-actual charge sessions (energy added ÷ SoC delta; median observed power)
+actual charge sessions (energy added ÷ SoC delta; peak observed power)
 instead of relying solely on config-entered guesses, which are easy to get
 wrong (trim/pack variants aren't reported anywhere in the vehicle's own
 entities, and real-world charging power depends on cable/breaker/amp
 settings this integration doesn't control).
 
-Mirrors the calibration philosophy already used for base-load learning in
-the surplus-load-switch integration: derive it from lived data, keep a
-robust rolling estimate, never trust a single sample.
+Power uses each session's *peak* reading, not its median: most observed
+sessions happen under PV-surplus charging (a completely separate system —
+see coordinator.py's module docstring on never auto-switching against
+it), which deliberately throttles current to whatever solar surplus is
+available at the moment — anywhere from ~1 kW to the charger's real max
+within a single session. This integration's own price-based charging
+never throttles that way, so what it needs to learn is "what's the
+charger's actual ceiling", and the median of a throttled session
+systematically understates that; the peak is the only per-session
+statistic that isn't biased by how much surplus happened to be available.
+Robustness against one outlier session still comes from the same
+median-of-samples approach across sessions as capacity calibration.
 """
 from __future__ import annotations
 
 import logging
-from statistics import median
 
 from .const import MIN_CALIBRATION_DELTA_SOC, MIN_POWER_READINGS_PER_SESSION
 from .planner_state import PlannerState
@@ -60,9 +68,9 @@ def process_charging_edge(
         planner_state.session_power_readings = []
 
         if len(power_readings) >= MIN_POWER_READINGS_PER_SESSION:
-            observed_power = median(power_readings)
+            observed_power = max(power_readings)
             _LOGGER.debug(
-                "Charge session ended: %d power readings -> median %.2f kW",
+                "Charge session ended: %d power readings -> peak %.2f kW",
                 len(power_readings),
                 observed_power,
             )

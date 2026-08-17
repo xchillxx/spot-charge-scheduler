@@ -57,9 +57,13 @@ be added later behind the same `price_source.py` interface.
   the new active target.
 - Self-calibrating battery capacity **and** charging power estimates:
   instead of trusting the config-entered guesses, it derives real kWh
-  capacity (energy added ÷ SoC delta) and real charging power (median
-  observed power per session) from your own charge sessions, and uses a
-  robust (median) rolling estimate once it has enough of them.
+  capacity (energy added ÷ SoC delta) from your own charge sessions, and a
+  robust (median-of-sessions) rolling estimate once it has enough of them.
+  Charging power specifically uses each session's *peak* reading rather
+  than its average — most sessions happen under PV-surplus charging (a
+  separate system, throttled to whatever solar is available at the
+  moment, anywhere from ~1 kW up), so the peak is what approximates the
+  charger's real ceiling; an average would systematically understate it.
 - A manual master switch. **This integration never auto-detects or
   auto-switches against a PV-surplus charging setup** — flip it on
   yourself once you've switched your wallbox/car out of solar-surplus mode

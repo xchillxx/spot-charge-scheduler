@@ -146,9 +146,13 @@ def _to_calendar_event(occ: schedule.Occurrence) -> CalendarEvent:
     summary = occ.summary
     if occ.rhythm_days:
         summary = f"{summary} (alle {occ.rhythm_days}d)"
+    description = f"Ziel-SoC: {occ.target_soc:g}%"
+    if occ.rhythm_days:
+        description += f" · wiederholt sich alle {occ.rhythm_days} Tage"
     return CalendarEvent(
         start=occ.start,
         end=occ.start + OCCURRENCE_DISPLAY_DURATION,
         summary=summary,
+        description=description,
         uid=schedule.override_key(occ.cycle_id, occ.original_start),
     )
