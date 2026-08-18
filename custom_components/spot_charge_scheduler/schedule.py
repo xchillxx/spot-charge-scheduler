@@ -16,7 +16,12 @@ from datetime import datetime, timedelta
 
 from homeassistant.util import dt as dt_util
 
-from .const import ACTIVE_LOOKAHEAD_DAYS, ACTIVE_LOOKBACK_DAYS, DEFAULT_TARGET_SOC
+from .const import (
+    ACTIVE_LOOKAHEAD_DAYS,
+    ACTIVE_LOOKBACK_DAYS,
+    DEFAULT_TARGET_SOC,
+    MISSED_DEADLINE_GRACE_HOURS,
+)
 
 _PERCENT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 _RRULE_FREQ_RE = re.compile(r"FREQ=(DAILY|WEEKLY)", re.IGNORECASE)
@@ -157,22 +162,27 @@ def find_active_occurrence(
     cycles: list[dict], overrides: dict, now: datetime, current_soc: float | None
 ) -> Occurrence | None:
     """The occurrence the coordinator should be planning/charging toward
-    right now: the earliest still-unmet one.
+    right now: the earliest still-unmet one, as long as it isn't so
+    overdue that chasing it no longer makes sense.
 
     Occurrences are checked in chronological order, so a past one whose
     deadline already passed is checked before any future one — it stays
     "active" (triggering the deadline-blown fallback in coordinator.py)
-    until its own target_soc is actually reached, at which point it's
-    treated as resolved and the next earliest occurrence takes over. This
+    until either its own target_soc is actually reached, or it's more than
+    MISSED_DEADLINE_GRACE_HOURS overdue, at which point it's treated as
+    resolved/abandoned and the next earliest occurrence takes over. This
     is what lets several independent recurring cycles interleave correctly
     without any explicit "advance to next" bookkeeping — it's always just
     derived fresh from cycles + overrides + the current time and SoC.
     """
     window_start = now - timedelta(days=ACTIVE_LOOKBACK_DAYS)
     window_end = now + timedelta(days=ACTIVE_LOOKAHEAD_DAYS)
+    grace = timedelta(hours=MISSED_DEADLINE_GRACE_HOURS)
     for occ in expand_all(cycles, overrides, window_start, window_end):
         if occ.start >= now:
             return occ
+        if now - occ.start > grace:
+            continue  # abandoned — too overdue to still be worth chasing
         if current_soc is None or current_soc < occ.target_soc:
             return occ
     return None

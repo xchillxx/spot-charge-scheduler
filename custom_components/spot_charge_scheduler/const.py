@@ -85,6 +85,14 @@ DEFAULT_TARGET_SOC = 50.0
 # is pure in-memory arithmetic, not I/O.
 ACTIVE_LOOKBACK_DAYS = 14
 ACTIVE_LOOKAHEAD_DAYS = 60
+# A missed deadline stays "active" (worth force-charging for) only up to
+# this long past its own start — beyond that, chasing it stops making
+# sense (the shift it was for has already happened) and the next
+# occurrence takes over instead. Live-confirmed need: a "04:30" cycle
+# still being pursued at 19:40 the same day (15h overdue, 36 points short)
+# while a same-cycle-family occurrence for the next day was already due —
+# without this, an unmet deadline blocked everything after it forever.
+MISSED_DEADLINE_GRACE_HOURS = 4.0
 # How far ahead the calendar entity expands occurrences for display when
 # Home Assistant doesn't constrain the query itself (defensive cap).
 CALENDAR_MAX_LOOKAHEAD_DAYS = 365

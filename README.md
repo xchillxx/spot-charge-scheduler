@@ -58,7 +58,11 @@ be added later behind the same `price_source.py` interface.
   available; a below-typical price is charged on right away instead.
 - Once the target SoC is reached, charging stops immediately regardless of
   the remaining schedule, and the next-earliest cycle occurrence becomes
-  the new active target.
+  the new active target. A deadline that's missed by a lot (more than
+  MISSED_DEADLINE_GRACE_HOURS, default 4h) is abandoned the same way
+  instead of being chased forever — a shift's 04:30 target is no longer
+  worth pursuing at 8 pm that evening if the next shift's own target is
+  already coming up.
 - Self-calibrating battery capacity **and** charging power estimates:
   instead of trusting the config-entered guesses, it derives real kWh
   capacity (energy added ÷ SoC delta) from your own charge sessions, and a
