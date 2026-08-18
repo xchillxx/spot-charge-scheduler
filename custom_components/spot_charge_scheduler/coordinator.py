@@ -91,6 +91,15 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self._cached_prices: list[PricePoint] = []
         self._last_price_fetch: datetime | None = None
         self._was_charging: bool | None = None
+        # Tracks the active occurrence's start so a change is detected even
+        # when nobody edited anything — e.g. the previous target got
+        # abandoned (MISSED_DEADLINE_GRACE_HOURS) or simply completed and
+        # the next one in line took over. Without this, the cache from the
+        # old target's fetch just sits there not covering the new one, and
+        # the 15-min fetch-spacing throttle (meant to avoid hammering the
+        # service while genuinely waiting on the SAME target) ends up
+        # delaying the fetch this actually-new target needs right now.
+        self._last_active_target_dt: datetime | None = None
 
     async def async_setup(self) -> None:
         await self.planner_state.async_load()
@@ -235,6 +244,10 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         )
         target_dt = active.start if active else None
         target_soc = active.target_soc if active else None
+
+        if target_dt != self._last_active_target_dt:
+            self._invalidate_price_cache()
+            self._last_active_target_dt = target_dt
 
         if target_dt is not None:
             await self._maybe_fetch_prices(now, target_dt)
