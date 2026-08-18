@@ -26,6 +26,7 @@ from .const import (
     CONF_TIBBER_HOME_NICKNAME,
     DOMAIN,
     PRICE_FETCH_MIN_INTERVAL_SECONDS,
+    PRICE_FETCH_RETRY_AFTER_FAILURE_SECONDS,
     UPDATE_INTERVAL_SECONDS,
 )
 from .planner import ChargePlan, compute_plan
@@ -100,6 +101,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         # service while genuinely waiting on the SAME target) ends up
         # delaying the fetch this actually-new target needs right now.
         self._last_active_target_dt: datetime | None = None
+        self._price_fetch_retry_interval: float = PRICE_FETCH_MIN_INTERVAL_SECONDS
 
     async def async_setup(self) -> None:
         await self.planner_state.async_load()
@@ -286,7 +288,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             return
         if self._last_price_fetch is not None and (
             now - self._last_price_fetch
-        ).total_seconds() < PRICE_FETCH_MIN_INTERVAL_SECONDS:
+        ).total_seconds() < self._price_fetch_retry_interval:
             return
         try:
             self._cached_prices = await self._price_provider.async_get_prices(self.hass, now, target_dt)
@@ -294,8 +296,15 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
                 self.planner_state.price_history, self._cached_prices, now
             )
             self.planner_state.async_save()
+            self._price_fetch_retry_interval = PRICE_FETCH_MIN_INTERVAL_SECONDS
         except Exception:  # noqa: BLE001 - a failed fetch must not crash the cycle
             _LOGGER.exception("Failed to fetch prices")
+            # A transient failure (e.g. another integration's service
+            # briefly unavailable right after a reload — live-observed)
+            # shouldn't cost the full success-case spacing before trying
+            # again; that left the plan sitting on zero data for minutes
+            # after the underlying problem was already gone.
+            self._price_fetch_retry_interval = PRICE_FETCH_RETRY_AFTER_FAILURE_SECONDS
         finally:
             self._last_price_fetch = now
 

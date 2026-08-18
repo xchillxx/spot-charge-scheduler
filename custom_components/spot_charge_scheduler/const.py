@@ -10,6 +10,12 @@ UPDATE_INTERVAL_SECONDS = 60
 # even if our cached data doesn't yet cover the target — avoids hammering
 # the service every 60s while waiting for tomorrow's prices to be published.
 PRICE_FETCH_MIN_INTERVAL_SECONDS = 15 * 60
+# After a FAILED fetch attempt (e.g. another integration's service briefly
+# unavailable right after a reload — live-observed), retry much sooner
+# than the success-case spacing above — a failure shouldn't leave the plan
+# sitting on zero price data for minutes after the underlying problem is
+# already gone.
+PRICE_FETCH_RETRY_AFTER_FAILURE_SECONDS = 90
 
 # Below this SoC delta (%), a charge session is too short/noisy to trust for
 # capacity calibration (e.g. a session interrupted seconds after starting).
