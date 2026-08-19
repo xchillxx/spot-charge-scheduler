@@ -108,13 +108,21 @@ class PlannerState:
         self.async_save()
 
     def add_power_sample(self, observed_power_kw: float) -> None:
-        """Same robust-median approach as add_calibration_sample, applied
-        to the actually-observed charging power instead of the static
-        config guess."""
+        """Deliberately a running MAXIMUM, not a median-of-samples like
+        add_calibration_sample: charging power has a hard physical ceiling
+        (cable/breaker/car limits), and most sessions happen under
+        PV-surplus charging, which only ever ties actual power BELOW that
+        ceiling — never above it. A median over recent sessions drifts
+        down during a stretch of low-surplus days even though the
+        hardware's real capability hasn't changed at all (live-confirmed:
+        3 low-surplus sessions pulled the estimate down to 4 kW from a
+        true ~10.9 kW). The highest peak ever observed is always at least
+        as trustworthy as any more recent-but-lower one, so the estimate
+        only ever moves up when something faster is genuinely seen, never
+        down just because conditions were poor lately."""
         self.power_samples.append(observed_power_kw)
         self.power_samples = self.power_samples[-MAX_CALIBRATION_SAMPLES:]
-        if len(self.power_samples) >= MIN_CALIBRATION_SAMPLES_TO_TRUST:
-            self.charge_power_kw = round(median(self.power_samples), 2)
+        self.charge_power_kw = round(max(self.charge_power_kw, observed_power_kw), 2)
         self.async_save()
 
     def async_save(self) -> None:

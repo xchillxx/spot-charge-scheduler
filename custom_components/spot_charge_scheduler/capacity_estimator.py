@@ -5,18 +5,17 @@ wrong (trim/pack variants aren't reported anywhere in the vehicle's own
 entities, and real-world charging power depends on cable/breaker/amp
 settings this integration doesn't control).
 
-Power uses each session's *peak* reading, not its median: most observed
-sessions happen under PV-surplus charging (a completely separate system —
-see coordinator.py's module docstring on never auto-switching against
-it), which deliberately throttles current to whatever solar surplus is
-available at the moment — anywhere from ~1 kW to the charger's real max
-within a single session. This integration's own price-based charging
-never throttles that way, so what it needs to learn is "what's the
-charger's actual ceiling", and the median of a throttled session
-systematically understates that; the peak is the only per-session
-statistic that isn't biased by how much surplus happened to be available.
-Robustness against one outlier session still comes from the same
-median-of-samples approach across sessions as capacity calibration.
+Power uses each session's *peak* reading, then the running MAXIMUM across
+sessions — neither a median, unlike capacity. Most observed sessions
+happen under PV-surplus charging (a completely separate system — see
+coordinator.py's module docstring on never auto-switching against it),
+which deliberately throttles current to whatever solar surplus is
+available *for that entire session* — anywhere from ~1 kW to the
+charger's real max. A median-of-sessions approach (tried first, then
+live-reverted) drifts down across a stretch of low-surplus days even
+though the hardware's ceiling hasn't changed; see planner_state.py's
+add_power_sample for the reasoning on why "highest ever seen" is the
+physically correct estimator here, not "typical recently".
 """
 from __future__ import annotations
 

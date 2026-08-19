@@ -67,11 +67,13 @@ be added later behind the same `price_source.py` interface.
   instead of trusting the config-entered guesses, it derives real kWh
   capacity (energy added ÷ SoC delta) from your own charge sessions, and a
   robust (median-of-sessions) rolling estimate once it has enough of them.
-  Charging power specifically uses each session's *peak* reading rather
-  than its average — most sessions happen under PV-surplus charging (a
-  separate system, throttled to whatever solar is available at the
-  moment, anywhere from ~1 kW up), so the peak is what approximates the
-  charger's real ceiling; an average would systematically understate it.
+  Charging power specifically uses each session's *peak* reading, then
+  tracks the running MAXIMUM across sessions rather than a median — most
+  sessions happen under PV-surplus charging (a separate system, throttled
+  to whatever solar is available for that whole session, anywhere from
+  ~1 kW up), so a median drifts down across a stretch of low-surplus days
+  even though the hardware's real ceiling hasn't changed; the estimate
+  only ever moves up when something genuinely faster is observed.
 - A manual master switch. **This integration never auto-detects or
   auto-switches against a PV-surplus charging setup** — flip it on
   yourself once you've switched your wallbox/car out of solar-surplus mode
