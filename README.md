@@ -120,6 +120,12 @@ Settings → Devices & Services → Add Integration → "Spot Charge Scheduler".
 | Price source | yes | only "Tibber" today |
 | Tibber home nickname | yes | as shown in the Tibber app, e.g. "Haus" |
 | Battery capacity (kWh) | yes | starting estimate; overwritten automatically once enough real sessions are observed |
+| Tankerkönig API key | no | free from [tankerkoenig.de](https://creativecommons.tankerkoenig.de/) — turns on the fuel-price + combustion break-even sensors |
+| Fuel type | — | `e5` / `e10` / `diesel` for the comparison |
+| Fuel-station search radius | — | km around your Home Assistant location (max 25) |
+| Odometer sensor | no | `sensor.*` in km; with the next field, self-calibrates the EV's kWh/100 km from the socket |
+| Charge-energy sensor | no | cumulative kWh delivered by the wallbox/socket (`total_increasing`) |
+| Live electricity-price sensor | no | €/kWh; only for the "cheaper right now" comparison when no charge plan is active |
 
 All fields are editable later via the integration's "Configure" option.
 
@@ -197,6 +203,21 @@ sections:
           - sensor.spot_charge_scheduler_kalibrierte_kapazitat
           - sensor.spot_charge_scheduler_kalibrierte_ladeleistung
 ```
+
+## Combustion-engine comparison (optional)
+
+With a (free) Tankerkönig API key plus the two consumption numbers, two
+sensors appear:
+
+| Entity | Type | |
+|---|---|---|
+| Spritpreis | `sensor` | cheapest local price for the chosen fuel (€/L), hourly; attrs: station, distance |
+| Verbrenner-Break-even | `sensor` | **at/above how many ct/kWh the combustion car is cheaper per km.** Attrs: `guenstiger_jetzt` (eauto/verbrenner vs. the current spot price), ct/100 km each way, the assumptions used |
+| Verbrenner-Verbrauch | `number` | combustion car's L/100 km |
+| E-Auto-Verbrauch (ab Steckdose) | `number` | EV kWh/100 km incl. charging losses; auto-calibrated from the odometer + charge-energy statistics when both are configured, otherwise the value set here |
+
+`break-even (ct/kWh) = L/100 km × fuel ct/L ÷ EV kWh/100 km`. Everything
+degrades safe: no API key → both sensors just stay unavailable.
 
 ## Upgrading from ≤ 0.12.0
 

@@ -12,18 +12,27 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
     CONF_CAR_CHARGE_LIMIT_ENTITY,
+    CONF_CHARGE_ENERGY_ENTITY,
     CONF_CHARGE_POWER_KW,
     CONF_CHARGE_POWER_SENSOR,
     CONF_CHARGE_SWITCH,
     CONF_CHARGING_STATUS_SENSOR,
+    CONF_CURRENT_PRICE_SENSOR,
     CONF_ENERGY_ADDED_SENSOR,
+    CONF_FUEL_RADIUS_KM,
+    CONF_FUEL_TYPE,
     CONF_HOME_ZONE_ENTITY,
     CONF_LOCATION_TRACKER_ENTITY,
+    CONF_ODOMETER_ENTITY,
     CONF_PLUGGED_IN_SENSOR,
     CONF_PRICE_SOURCE,
     CONF_SOC_SENSOR,
+    CONF_TANKERKOENIG_API_KEY,
     CONF_TIBBER_HOME_NICKNAME,
+    DEFAULT_FUEL_RADIUS_KM,
+    DEFAULT_FUEL_TYPE,
     DOMAIN,
+    FUEL_TYPES,
     PRICE_SOURCE_TIBBER,
     PRICE_SOURCES,
 )
@@ -84,6 +93,31 @@ def _schema(defaults: dict | None = None) -> vol.Schema:
         ): selector.NumberSelector(
             selector.NumberSelectorConfig(min=1, max=200, step=0.1, unit_of_measurement="kWh")
         ),
+        # --- combustion-engine comparison (all optional) ---
+        vol.Optional(
+            CONF_TANKERKOENIG_API_KEY, **_default(d, CONF_TANKERKOENIG_API_KEY)
+        ): selector.TextSelector(selector.TextSelectorConfig(type="password")),
+        vol.Optional(
+            CONF_FUEL_TYPE, default=d.get(CONF_FUEL_TYPE, DEFAULT_FUEL_TYPE)
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=FUEL_TYPES, translation_key="fuel_type")
+        ),
+        vol.Optional(
+            CONF_FUEL_RADIUS_KM, default=d.get(CONF_FUEL_RADIUS_KM, DEFAULT_FUEL_RADIUS_KM)
+        ): selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=25, step=0.5, unit_of_measurement="km")
+        ),
+        vol.Optional(
+            CONF_ODOMETER_ENTITY, **_default(d, CONF_ODOMETER_ENTITY)
+        ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+        vol.Optional(
+            CONF_CHARGE_ENERGY_ENTITY, **_default(d, CONF_CHARGE_ENERGY_ENTITY)
+        ): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="sensor", device_class="energy")
+        ),
+        vol.Optional(
+            CONF_CURRENT_PRICE_SENSOR, **_default(d, CONF_CURRENT_PRICE_SENSOR)
+        ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
     })
 
 

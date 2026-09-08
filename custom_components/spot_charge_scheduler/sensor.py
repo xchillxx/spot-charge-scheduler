@@ -25,6 +25,8 @@ async def async_setup_entry(
         CalibratedCapacitySensor(coordinator, entry),
         CalibratedChargePowerSensor(coordinator, entry),
         CheapThresholdSensor(coordinator, entry),
+        FuelPriceSensor(coordinator, entry),
+        CombustionBreakEvenSensor(coordinator, entry),
     ])
 
 
@@ -196,4 +198,73 @@ class CheapThresholdSensor(_BaseSensor):
                 data.get("cheap_price_threshold") is not None
                 and data.get("car_charge_limit") is not None
             ),
+        }
+
+
+class FuelPriceSensor(_BaseSensor):
+    """Cheapest local price for the configured fuel type, from Tankerkönig.
+    Unavailable until an API key is set and a first fetch succeeds."""
+
+    _attr_name = "Spritpreis"
+    _attr_icon = "mdi:gas-station"
+    _attr_native_unit_of_measurement = "€/L"
+    _attr_suggested_display_precision = 3
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_fuel_price"
+
+    @property
+    def native_value(self) -> float | None:
+        c = (self.coordinator.data or {}).get("combustion")
+        return c.get("fuel_price_eur_l") if c else None
+
+    @property
+    def extra_state_attributes(self):
+        c = (self.coordinator.data or {}).get("combustion")
+        if not c:
+            return {}
+        return {
+            "kraftstoffart": c.get("fuel_type"),
+            "tankstelle": c.get("station"),
+            "entfernung_km": c.get("station_distance_km"),
+        }
+
+
+class CombustionBreakEvenSensor(_BaseSensor):
+    """Break-even electricity price: at/above this many ct/kWh, driving the
+    combustion car costs the same per kilometre as charging. Below it, the
+    EV is cheaper. Unavailable until a fuel price is known."""
+
+    _attr_name = "Verbrenner-Break-even"
+    _attr_icon = "mdi:scale-balance"
+    _attr_native_unit_of_measurement = "ct/kWh"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_combustion_break_even"
+
+    @property
+    def native_value(self) -> float | None:
+        c = (self.coordinator.data or {}).get("combustion")
+        if not c or c.get("break_even_eur_kwh") is None:
+            return None
+        return round(c["break_even_eur_kwh"] * 100, 1)
+
+    @property
+    def extra_state_attributes(self):
+        c = (self.coordinator.data or {}).get("combustion")
+        if not c:
+            return {}
+        cur = c.get("current_price_eur_kwh")
+        return {
+            "guenstiger_jetzt": c.get("cheaper_now"),
+            "aktueller_strompreis_ct_kwh": round(cur * 100, 2) if cur is not None else None,
+            "verbrenner_ct_100km": round(c["ice_eur_100km"] * 100, 1) if c.get("ice_eur_100km") is not None else None,
+            "eauto_ct_100km_jetzt": round(c["ev_eur_100km_now"] * 100, 1) if c.get("ev_eur_100km_now") is not None else None,
+            "verbrenner_verbrauch_l_100km": c.get("ice_l_100km"),
+            "eauto_verbrauch_kwh_100km": c.get("ev_kwh_100km"),
+            "spritpreis_eur_l": c.get("fuel_price_eur_l"),
+            "kraftstoffart": c.get("fuel_type"),
         }

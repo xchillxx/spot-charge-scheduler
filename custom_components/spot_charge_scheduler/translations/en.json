@@ -17,7 +17,13 @@
           "car_charge_limit_entity": "Car charge-limit entity (optional, number) — while power is cheap vs. the last 8 days, top up opportunistically toward this SoC beyond the cycle target",
           "price_source": "Price source",
           "tibber_home_nickname": "Tibber home nickname (as shown in the Tibber app)",
-          "battery_capacity_kwh_default": "Battery capacity (kWh) — starting estimate, refined automatically over time"
+          "battery_capacity_kwh_default": "Battery capacity (kWh) — starting estimate, refined automatically over time",
+          "tankerkoenig_api_key": "Tankerkönig API key (optional) — enables the fuel-price and combustion break-even sensors",
+          "fuel_type": "Fuel type for the comparison",
+          "fuel_radius_km": "Search radius for fuel stations (km, around your Home Assistant location)",
+          "odometer_entity": "Odometer sensor (optional, km) — with the charge-energy sensor below, self-calibrates the EV's kWh/100 km from the socket",
+          "charge_energy_entity": "Cumulative charge-energy sensor (optional, kWh from the wallbox/socket)",
+          "current_price_sensor_entity": "Live electricity-price sensor (optional, €/kWh) — only used for the 'cheaper right now' comparison when no charge plan is active"
         }
       }
     },
@@ -42,7 +48,13 @@
           "car_charge_limit_entity": "Car charge-limit entity (optional, number) — while power is cheap vs. the last 8 days, top up opportunistically toward this SoC beyond the cycle target",
           "price_source": "Price source",
           "tibber_home_nickname": "Tibber home nickname (as shown in the Tibber app)",
-          "battery_capacity_kwh_default": "Battery capacity (kWh) — starting estimate, refined automatically over time"
+          "battery_capacity_kwh_default": "Battery capacity (kWh) — starting estimate, refined automatically over time",
+          "tankerkoenig_api_key": "Tankerkönig API key (optional) — enables the fuel-price and combustion break-even sensors",
+          "fuel_type": "Fuel type for the comparison",
+          "fuel_radius_km": "Search radius for fuel stations (km, around your Home Assistant location)",
+          "odometer_entity": "Odometer sensor (optional, km) — with the charge-energy sensor below, self-calibrates the EV's kWh/100 km from the socket",
+          "charge_energy_entity": "Cumulative charge-energy sensor (optional, kWh from the wallbox/socket)",
+          "current_price_sensor_entity": "Live electricity-price sensor (optional, €/kWh) — only used for the 'cheaper right now' comparison when no charge plan is active"
         }
       }
     }
@@ -51,6 +63,13 @@
     "price_source": {
       "options": {
         "tibber": "Tibber"
+      }
+    },
+    "fuel_type": {
+      "options": {
+        "e5": "Super E5",
+        "e10": "Super E10",
+        "diesel": "Diesel"
       }
     }
   }

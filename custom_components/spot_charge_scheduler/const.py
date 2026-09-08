@@ -79,6 +79,35 @@ CONF_PRICE_SOURCE = "price_source"
 CONF_TIBBER_HOME_NICKNAME = "tibber_home_nickname"
 CONF_BATTERY_CAPACITY_KWH_DEFAULT = "battery_capacity_kwh_default"
 
+# --- Combustion-engine cost comparison (all optional) ---
+# A free Tankerkönig API key (tankerkoenig.de) turns on a fuel-price sensor
+# and, together with the two consumption numbers, a "break-even" sensor:
+# above how many ct/kWh would driving the combustion car be cheaper per km.
+CONF_TANKERKOENIG_API_KEY = "tankerkoenig_api_key"
+CONF_FUEL_TYPE = "fuel_type"
+CONF_FUEL_RADIUS_KM = "fuel_radius_km"
+# Optional pair for self-calibrating "kWh from the socket per 100 km" out of
+# Home Assistant's own long-term statistics (Δ energy ÷ Δ odometer).
+CONF_ODOMETER_ENTITY = "odometer_entity"
+CONF_CHARGE_ENERGY_ENTITY = "charge_energy_entity"
+# Optional: a live electricity-price sensor (€/kWh) used only for the
+# "cheaper right now" comparison when no charge plan is active to read the
+# current spot price from (e.g. sensor.<tibber_home>_electricity_price).
+CONF_CURRENT_PRICE_SENSOR = "current_price_sensor_entity"
+
+FUEL_TYPES = ["e5", "e10", "diesel"]
+DEFAULT_FUEL_TYPE = "diesel"
+DEFAULT_FUEL_RADIUS_KM = 5.0
+FUEL_FETCH_MIN_INTERVAL_SECONDS = 3600  # Tankerkönig asks for ~hourly polling
+FUEL_FETCH_RETRY_AFTER_FAILURE_SECONDS = 300
+
+DEFAULT_ICE_CONSUMPTION_L_100KM = 6.5
+DEFAULT_EV_CONSUMPTION_KWH_100KM = 20.0  # from the socket, incl. charging losses
+# EV-consumption self-calibration from the recorder's long-term statistics.
+EV_CONSUMPTION_LOOKBACK_DAYS = 90
+EV_CONSUMPTION_MIN_KM = 300.0  # need this much distance in the window to trust the ratio
+EV_CONSUMPTION_RECALC_INTERVAL_SECONDS = 6 * 3600
+
 PRICE_SOURCE_TIBBER = "tibber"
 # Only Tibber is implemented today (see price_source.py) — kept as a select
 # rather than hardcoded so a second provider (e.g. a generic day-ahead/EPEX

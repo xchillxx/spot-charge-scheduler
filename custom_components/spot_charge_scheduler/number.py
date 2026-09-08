@@ -24,6 +24,8 @@ async def async_setup_entry(
         BatteryCapacityNumber(coordinator, entry),
         ChargePowerNumber(coordinator, entry),
         OpportunisticPercentileNumber(coordinator, entry),
+        IceConsumptionNumber(coordinator, entry),
+        EvConsumptionNumber(coordinator, entry),
     ]
     for n in range(1, NUM_CYCLE_SLOTS + 1):
         entities.append(CycleSlotTargetSocNumber(coordinator, entry, n))
@@ -125,6 +127,57 @@ class OpportunisticPercentileNumber(_BaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_opportunistic_percentile(value)
+
+
+class IceConsumptionNumber(_BaseNumber):
+    """Combustion car's fuel use, L/100 km — one half of the break-even
+    comparison (see the "Verbrenner-Break-even" sensor)."""
+
+    _attr_name = "Verbrenner-Verbrauch"
+    _attr_icon = "mdi:gas-station"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 30
+    _attr_native_step = 0.1
+    _attr_native_unit_of_measurement = "L/100 km"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_ice_consumption"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.ice_consumption_l_100km
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_ice_consumption_l_100km(value)
+
+
+class EvConsumptionNumber(_BaseNumber):
+    """EV's energy use *from the socket*, kWh/100 km (incl. charging losses)
+    — the other half of the break-even comparison. Auto-overwritten from
+    Home Assistant's own odometer + charge-energy statistics once an
+    odometer and a charge-energy entity are configured and there's enough
+    distance history; stays at the value set here otherwise."""
+
+    _attr_name = "E-Auto-Verbrauch (ab Steckdose)"
+    _attr_icon = "mdi:ev-station"
+    _attr_native_min_value = 5
+    _attr_native_max_value = 60
+    _attr_native_step = 0.5
+    _attr_native_unit_of_measurement = "kWh/100 km"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_ev_consumption"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.ev_consumption_kwh_100km
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_ev_consumption_kwh_100km(value)
 
 
 class _SlotNumber(_BaseNumber):

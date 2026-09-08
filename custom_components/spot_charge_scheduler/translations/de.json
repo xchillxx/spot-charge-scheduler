@@ -17,7 +17,13 @@
           "car_charge_limit_entity": "Auto-Ladelimit-Entität (optional, number) — lädt bei günstigem Strom (vs. letzte 8 Tage) opportunistisch über das Zyklus-Ziel hinaus bis zu diesem SoC",
           "price_source": "Preisquelle",
           "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
-          "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"
+          "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert",
+          "tankerkoenig_api_key": "Tankerkönig-API-Key (optional) — schaltet Spritpreis- und Verbrenner-Break-even-Sensor frei",
+          "fuel_type": "Kraftstoffart für den Vergleich",
+          "fuel_radius_km": "Suchradius für Tankstellen (km, um deinen Home-Assistant-Standort)",
+          "odometer_entity": "Kilometerstand-Sensor (optional, km) — zusammen mit dem Ladeenergie-Sensor unten wird der EV-Verbrauch (kWh/100 km ab Steckdose) selbst kalibriert",
+          "charge_energy_entity": "Kumulierter Ladeenergie-Sensor (optional, kWh ab Wallbox/Steckdose)",
+          "current_price_sensor_entity": "Live-Strompreis-Sensor (optional, €/kWh) — nur für den „günstiger jetzt\"-Vergleich, wenn gerade kein Ladeplan aktiv ist"
         }
       }
     },
@@ -42,7 +48,13 @@
           "car_charge_limit_entity": "Auto-Ladelimit-Entität (optional, number) — lädt bei günstigem Strom (vs. letzte 8 Tage) opportunistisch über das Zyklus-Ziel hinaus bis zu diesem SoC",
           "price_source": "Preisquelle",
           "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
-          "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"
+          "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert",
+          "tankerkoenig_api_key": "Tankerkönig-API-Key (optional) — schaltet Spritpreis- und Verbrenner-Break-even-Sensor frei",
+          "fuel_type": "Kraftstoffart für den Vergleich",
+          "fuel_radius_km": "Suchradius für Tankstellen (km, um deinen Home-Assistant-Standort)",
+          "odometer_entity": "Kilometerstand-Sensor (optional, km) — zusammen mit dem Ladeenergie-Sensor unten wird der EV-Verbrauch (kWh/100 km ab Steckdose) selbst kalibriert",
+          "charge_energy_entity": "Kumulierter Ladeenergie-Sensor (optional, kWh ab Wallbox/Steckdose)",
+          "current_price_sensor_entity": "Live-Strompreis-Sensor (optional, €/kWh) — nur für den „günstiger jetzt\"-Vergleich, wenn gerade kein Ladeplan aktiv ist"
         }
       }
     }
@@ -51,6 +63,13 @@
     "price_source": {
       "options": {
         "tibber": "Tibber"
+      }
+    },
+    "fuel_type": {
+      "options": {
+        "e5": "Super E5",
+        "e10": "Super E10",
+        "diesel": "Diesel"
       }
     }
   }

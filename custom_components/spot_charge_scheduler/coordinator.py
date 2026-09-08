@@ -10,26 +10,45 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from . import capacity_estimator, price_baseline, readiness, schedule
+from . import (
+    capacity_estimator,
+    consumption_estimator,
+    fuel_source,
+    price_baseline,
+    readiness,
+    schedule,
+)
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
     CONF_CAR_CHARGE_LIMIT_ENTITY,
+    CONF_CHARGE_ENERGY_ENTITY,
     CONF_CHARGE_POWER_KW,
     CONF_CHARGE_POWER_SENSOR,
     CONF_CHARGE_SWITCH,
     CONF_CHARGING_STATUS_SENSOR,
+    CONF_CURRENT_PRICE_SENSOR,
     CONF_ENERGY_ADDED_SENSOR,
+    CONF_FUEL_RADIUS_KM,
+    CONF_FUEL_TYPE,
     CONF_HOME_ZONE_ENTITY,
     CONF_LOCATION_TRACKER_ENTITY,
+    CONF_ODOMETER_ENTITY,
     CONF_PLUGGED_IN_SENSOR,
     CONF_PRICE_SOURCE,
     CONF_SOC_SENSOR,
+    CONF_TANKERKOENIG_API_KEY,
     CONF_TIBBER_HOME_NICKNAME,
+    DEFAULT_FUEL_RADIUS_KM,
+    DEFAULT_FUEL_TYPE,
     DOMAIN,
+    EV_CONSUMPTION_RECALC_INTERVAL_SECONDS,
+    FUEL_FETCH_MIN_INTERVAL_SECONDS,
+    FUEL_FETCH_RETRY_AFTER_FAILURE_SECONDS,
     PRICE_FETCH_MIN_INTERVAL_SECONDS,
     PRICE_FETCH_RETRY_AFTER_FAILURE_SECONDS,
     UPDATE_INTERVAL_SECONDS,
 )
+from .fuel_source import FuelPrice
 from .planner import ChargePlan, compute_plan
 from .planner_state import PlannerState
 from .price_source import SLOT_DURATION, PricePoint, get_price_provider
@@ -103,6 +122,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         # delaying the fetch this actually-new target needs right now.
         self._last_active_target_dt: datetime | None = None
         self._price_fetch_retry_interval: float = PRICE_FETCH_MIN_INTERVAL_SECONDS
+        # Combustion-engine comparison (all optional / degrades safe).
+        self._fuel_price: FuelPrice | None = None
+        self._last_fuel_fetch: datetime | None = None
+        self._fuel_fetch_retry_interval: float = FUEL_FETCH_MIN_INTERVAL_SECONDS
+        self._last_ev_recalc: datetime | None = None
 
     async def async_setup(self) -> None:
         await self.planner_state.async_load()
@@ -152,6 +176,16 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
 
     async def async_set_opportunistic_percentile(self, value: float) -> None:
         self.planner_state.opportunistic_percentile = value
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
+    async def async_set_ice_consumption_l_100km(self, value: float) -> None:
+        self.planner_state.ice_consumption_l_100km = value
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
+    async def async_set_ev_consumption_kwh_100km(self, value: float) -> None:
+        self.planner_state.ev_consumption_kwh_100km = value
         self.planner_state.async_save()
         await self.async_request_refresh()
 
@@ -227,6 +261,10 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             plan, current_soc, target_soc, plugged_in, is_home, defer_for_data, now, target_dt
         )
 
+        await self._maybe_fetch_fuel_price(now)
+        await self._maybe_recalc_ev_consumption(now)
+        combustion = self._combustion_comparison(now)
+
         return {
             "current_soc": current_soc,
             "is_charging": is_charging,
@@ -244,6 +282,89 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "power_sample_count": len(self.planner_state.power_samples),
             "master_switch_on": self.planner_state.master_switch_on,
             "plan": plan,
+            "combustion": combustion,
+        }
+
+    # --- combustion-engine comparison ---
+
+    def _current_electricity_price_eur_kwh(self, now: datetime) -> float | None:
+        """The price we're paying right now: the cached 15-min slot covering
+        `now` if we have one, else an optional live spot-price sensor."""
+        for p in self._cached_prices:
+            if p.start <= now < p.start + SLOT_DURATION:
+                return p.price
+        return _get_float_state(self.hass, self._config.get(CONF_CURRENT_PRICE_SENSOR))
+
+    async def _maybe_fetch_fuel_price(self, now: datetime) -> None:
+        api_key = self._config.get(CONF_TANKERKOENIG_API_KEY)
+        if not api_key:
+            self._fuel_price = None
+            return
+        if self._last_fuel_fetch is not None and (
+            now - self._last_fuel_fetch
+        ).total_seconds() < self._fuel_fetch_retry_interval:
+            return
+        try:
+            self._fuel_price = await fuel_source.async_get_cheapest_fuel_price(
+                self.hass,
+                api_key,
+                self.hass.config.latitude,
+                self.hass.config.longitude,
+                float(self._config.get(CONF_FUEL_RADIUS_KM) or DEFAULT_FUEL_RADIUS_KM),
+                str(self._config.get(CONF_FUEL_TYPE) or DEFAULT_FUEL_TYPE),
+            )
+            self._fuel_fetch_retry_interval = FUEL_FETCH_MIN_INTERVAL_SECONDS
+        except Exception:  # noqa: BLE001 - a fuel-price hiccup must not crash the cycle
+            _LOGGER.warning("Tankerkönig fuel-price fetch failed", exc_info=True)
+            self._fuel_fetch_retry_interval = FUEL_FETCH_RETRY_AFTER_FAILURE_SECONDS
+        finally:
+            self._last_fuel_fetch = now
+
+    async def _maybe_recalc_ev_consumption(self, now: datetime) -> None:
+        if self._last_ev_recalc is not None and (
+            now - self._last_ev_recalc
+        ).total_seconds() < EV_CONSUMPTION_RECALC_INTERVAL_SECONDS:
+            return
+        self._last_ev_recalc = now
+        estimate = await consumption_estimator.async_estimate_ev_consumption_kwh_100km(
+            self.hass,
+            self._config.get(CONF_ODOMETER_ENTITY),
+            self._config.get(CONF_CHARGE_ENERGY_ENTITY),
+        )
+        if estimate is not None and estimate > 0:
+            self.planner_state.ev_consumption_kwh_100km = estimate
+            self.planner_state.async_save()
+
+    def _combustion_comparison(self, now: datetime) -> dict | None:
+        """Break-even electricity price: at/above how many €/kWh would the
+        combustion car cost the same per km. None until a fuel price is
+        available."""
+        fp = self._fuel_price
+        if fp is None:
+            return None
+        ice_l = self.planner_state.ice_consumption_l_100km
+        ev_kwh = self.planner_state.ev_consumption_kwh_100km
+        if ev_kwh <= 0:
+            return None
+        ice_eur_100km = ice_l * fp.price_eur_per_l
+        break_even_eur_kwh = ice_eur_100km / ev_kwh
+        cur = self._current_electricity_price_eur_kwh(now)
+        ev_eur_100km_now = ev_kwh * cur if cur is not None else None
+        cheaper_now = None
+        if cur is not None:
+            cheaper_now = "eauto" if cur < break_even_eur_kwh else "verbrenner"
+        return {
+            "break_even_eur_kwh": round(break_even_eur_kwh, 4),
+            "fuel_price_eur_l": fp.price_eur_per_l,
+            "fuel_type": fp.fuel_type,
+            "station": fp.station,
+            "station_distance_km": fp.distance_km,
+            "ice_l_100km": ice_l,
+            "ev_kwh_100km": ev_kwh,
+            "ice_eur_100km": round(ice_eur_100km, 2),
+            "current_price_eur_kwh": cur,
+            "ev_eur_100km_now": round(ev_eur_100km_now, 2) if ev_eur_100km_now is not None else None,
+            "cheaper_now": cheaper_now,
         }
 
     async def _maybe_fetch_prices(self, now: datetime, target_dt: datetime) -> None:
