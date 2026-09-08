@@ -16,6 +16,8 @@ from statistics import median
 from typing import Any
 
 from .const import (
+    OPPORTUNISTIC_LOOKBACK_DAYS,
+    OPPORTUNISTIC_MIN_SAMPLES,
     PRICE_HISTORY_LOOKBACK_DAYS,
     PRICE_HISTORY_MIN_SAMPLES,
     PRICE_HISTORY_RETENTION_DAYS,
@@ -64,3 +66,33 @@ def typical_price_for_time_of_day(
     if len(matches) < PRICE_HISTORY_MIN_SAMPLES:
         return None
     return median(matches)
+
+
+def cheap_price_threshold(
+    history: list[dict[str, Any]], now: datetime, percentile: float
+) -> float | None:
+    """The `percentile`-th percentile of every price OBSERVED over the last
+    OPPORTUNISTIC_LOOKBACK_DAYS days (past slots only — the forward forecast
+    that also lives in the archive is excluded, so this really is "cheap
+    vs. the last N days" and not "cheap vs. what's coming"). A slot at or
+    below the returned value counts as genuinely cheap for opportunistic
+    top-up — see planner.compute_plan.
+
+    None until the window holds at least OPPORTUNISTIC_MIN_SAMPLES points;
+    callers must treat that as "no opinion / stay off", never as "nothing
+    is cheap".
+    """
+    cutoff = now - timedelta(days=OPPORTUNISTIC_LOOKBACK_DAYS)
+    prices = sorted(
+        entry["price"]
+        for entry in history
+        if cutoff <= datetime.fromisoformat(entry["start"]) <= now
+    )
+    if len(prices) < OPPORTUNISTIC_MIN_SAMPLES:
+        return None
+    # Linear-interpolated percentile (statistics.quantiles only does n-way
+    # cut points); a couple of lines, trivial to eyeball in a test.
+    rank = max(0.0, min(100.0, percentile)) / 100 * (len(prices) - 1)
+    low = int(rank)
+    high = min(low + 1, len(prices) - 1)
+    return prices[low] + (prices[high] - prices[low]) * (rank - low)

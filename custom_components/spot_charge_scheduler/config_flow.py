@@ -11,6 +11,7 @@ from homeassistant.helpers import selector
 
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
+    CONF_CAR_CHARGE_LIMIT_ENTITY,
     CONF_CHARGE_POWER_KW,
     CONF_CHARGE_POWER_SENSOR,
     CONF_CHARGE_SWITCH,
@@ -67,6 +68,9 @@ def _schema(defaults: dict | None = None) -> vol.Schema:
         vol.Optional(
             CONF_CHARGE_POWER_SENSOR, **_default(d, CONF_CHARGE_POWER_SENSOR)
         ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", device_class="power")),
+        vol.Optional(
+            CONF_CAR_CHARGE_LIMIT_ENTITY, **_default(d, CONF_CAR_CHARGE_LIMIT_ENTITY)
+        ): selector.EntitySelector(selector.EntitySelectorConfig(domain="number")),
         vol.Required(
             CONF_PRICE_SOURCE, default=d.get(CONF_PRICE_SOURCE, PRICE_SOURCE_TIBBER)
         ): selector.SelectSelector(

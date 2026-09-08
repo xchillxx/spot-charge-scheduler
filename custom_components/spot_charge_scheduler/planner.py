@@ -29,10 +29,17 @@ SLOT_HOURS = SLOT_DURATION.total_seconds() / 3600
 class ChargePlan:
     slots: list[PricePoint]  # chronologically sorted, only the selected ones
     estimated_cost_eur: float
-    estimated_completion: datetime | None
+    estimated_completion: datetime | None  # when the GUARANTEED floor is covered
     target_reachable: bool | None  # None = no target set, nothing to evaluate yet
-    required_slot_count: int
+    required_slot_count: int  # slots needed for the guaranteed floor only
     available_slot_count: int
+    # How many of `slots` are opportunistic top-up (cheap slots taken beyond
+    # the guaranteed floor, up to the car's charge limit) rather than
+    # mandatory. 0 whenever opportunistic top-up is inactive/unconfigured.
+    opportunistic_slot_count: int = 0
+    # The SoC charging actually stops at this cycle: the car charge limit
+    # when opportunistic top-up is active, otherwise just the target SoC.
+    effective_ceiling_soc: float | None = None
 
 
 def _bridge_gaps_by_price(
@@ -78,14 +85,29 @@ def compute_plan(
     battery_capacity_kwh: float,
     charge_power_kw: float,
     price_points: list[PricePoint],
+    max_soc: float | None = None,
+    cheap_price_threshold: float | None = None,
 ) -> ChargePlan:
-    if current_soc >= target_soc:
+    """`target_soc` is the guaranteed floor — reached by the deadline no
+    matter the price. When `max_soc` and `cheap_price_threshold` are both
+    given and `max_soc > target_soc`, the plan ALSO grabs any still-eligible
+    slot priced at/below the threshold, up to `max_soc` — opportunistic
+    top-up, never forced and never pushing out `estimated_completion` (which
+    always reflects only the guaranteed floor)."""
+    opportunistic_active = (
+        max_soc is not None
+        and cheap_price_threshold is not None
+        and max_soc > target_soc
+    )
+    ceiling = max_soc if opportunistic_active else target_soc
+
+    if current_soc >= ceiling:
         return ChargePlan(
             slots=[], estimated_cost_eur=0.0, estimated_completion=now,
             target_reachable=True, required_slot_count=0, available_slot_count=0,
+            opportunistic_slot_count=0, effective_ceiling_soc=ceiling,
         )
 
-    remaining_kwh = (target_soc - current_soc) / 100 * battery_capacity_kwh
     slot_kwh = charge_power_kw * SLOT_HOURS
 
     eligible = [p for p in price_points if now <= p.start < target_datetime]
@@ -97,22 +119,54 @@ def compute_plan(
         return ChargePlan(
             slots=[], estimated_cost_eur=0.0, estimated_completion=None,
             target_reachable=False, required_slot_count=0, available_slot_count=available_slot_count,
+            opportunistic_slot_count=0, effective_ceiling_soc=ceiling,
         )
 
-    required_slot_count = math.ceil(remaining_kwh / slot_kwh)
+    # --- mandatory: the cheapest N slots needed to hit the guaranteed floor ---
+    mandatory_kwh = max(0.0, target_soc - current_soc) / 100 * battery_capacity_kwh
+    required_slot_count = math.ceil(mandatory_kwh / slot_kwh) if mandatory_kwh > 0 else 0
 
+    eligible_by_price = sorted(eligible, key=lambda p: p.price)
     if available_slot_count >= required_slot_count:
-        selected = sorted(eligible, key=lambda p: p.price)[:required_slot_count]
+        mandatory = eligible_by_price[:required_slot_count]
         target_reachable = True
     else:
-        selected = list(eligible)
+        mandatory = list(eligible)
         target_reachable = False
 
+    # --- opportunistic: cheap leftover slots, up to the car's charge limit ---
+    # Only when the guaranteed floor is actually reachable — if we're already
+    # taking every slot just to (try to) hit the floor, there's nothing left
+    # to be opportunistic with.
+    opportunistic: list[PricePoint] = []
+    if opportunistic_active and target_reachable:
+        ceiling_kwh = (ceiling - current_soc) / 100 * battery_capacity_kwh
+        ceiling_slot_count = math.ceil(ceiling_kwh / slot_kwh)
+        bonus_budget = max(0, ceiling_slot_count - len(mandatory))
+        mandatory_starts = {p.start for p in mandatory}
+        opportunistic = [
+            p for p in eligible_by_price
+            if p.start not in mandatory_starts and p.price <= cheap_price_threshold
+        ][:bonus_budget]
+
+    selected_starts = {p.start for p in mandatory} | {p.start for p in opportunistic}
     eligible_sorted = sorted(eligible, key=lambda p: p.start)
+    selected = [p for p in eligible_sorted if p.start in selected_starts]
+
     bridged_starts = _bridge_gaps_by_price(eligible_sorted, selected, PRICE_BRIDGE_TOLERANCE)
     selected = [p for p in eligible_sorted if p.start in bridged_starts]
+    bonus_count = sum(1 for p in selected if p.start not in {m.start for m in mandatory})
+
     estimated_cost_eur = sum(p.price * slot_kwh for p in selected)
-    estimated_completion = (selected[-1].start + SLOT_DURATION) if selected else None
+    # Completion tracks the guaranteed floor only — opportunistic slots that
+    # land later must not make the promised target look later than it is.
+    mandatory_by_start = sorted(mandatory, key=lambda p: p.start)
+    if mandatory_by_start:
+        estimated_completion = mandatory_by_start[-1].start + SLOT_DURATION
+    elif current_soc >= target_soc:
+        estimated_completion = now
+    else:
+        estimated_completion = None
 
     return ChargePlan(
         slots=selected,
@@ -121,4 +175,6 @@ def compute_plan(
         target_reachable=target_reachable,
         required_slot_count=required_slot_count,
         available_slot_count=available_slot_count,
+        opportunistic_slot_count=bonus_count,
+        effective_ceiling_soc=ceiling,
     )

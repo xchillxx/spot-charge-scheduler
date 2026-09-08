@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 from . import capacity_estimator, price_baseline, readiness, schedule
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
+    CONF_CAR_CHARGE_LIMIT_ENTITY,
     CONF_CHARGE_POWER_KW,
     CONF_CHARGE_POWER_SENSOR,
     CONF_CHARGE_SWITCH,
@@ -202,6 +203,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
+    async def async_set_opportunistic_percentile(self, value: float) -> None:
+        self.planner_state.opportunistic_percentile = value
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
     async def async_set_master_switch(self, value: bool) -> None:
         self.planner_state.master_switch_on = value
         self.planner_state.async_save()
@@ -227,6 +233,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         plugged_in = _get_bool_state(self.hass, self._config.get(CONF_PLUGGED_IN_SENSOR))
         energy_added = _get_float_state(self.hass, self._config.get(CONF_ENERGY_ADDED_SENSOR))
         current_power_kw = _get_float_state(self.hass, self._config.get(CONF_CHARGE_POWER_SENSOR))
+        # The car's own target charge limit (e.g. number.model_3_charge_limit),
+        # if the user pointed us at it — the ceiling for opportunistic top-up.
+        # None (unset or unavailable) simply disables the top-up; the
+        # guaranteed target is unaffected.
+        car_charge_limit = _get_float_state(self.hass, self._config.get(CONF_CAR_CHARGE_LIMIT_ENTITY))
         is_home = _get_is_home(
             self.hass, self._config.get(CONF_LOCATION_TRACKER_ENTITY), self._config.get(CONF_HOME_ZONE_ENTITY)
         )
@@ -254,7 +265,13 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         if target_dt is not None:
             await self._maybe_fetch_prices(now, target_dt)
 
-        plan = self._compute_plan(now, target_dt, target_soc, current_soc)
+        cheap_threshold = price_baseline.cheap_price_threshold(
+            self.planner_state.price_history, now, self.planner_state.opportunistic_percentile
+        )
+
+        plan = self._compute_plan(
+            now, target_dt, target_soc, current_soc, car_charge_limit, cheap_threshold
+        )
         self.planner_state.plan = _plan_to_dict(plan)
 
         defer_for_data = self._should_defer_for_data(now, target_dt, plan)
@@ -271,6 +288,8 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "active_occurrence": active,
             "target_soc": target_soc,
             "target_datetime": target_dt,
+            "car_charge_limit": car_charge_limit,
+            "cheap_price_threshold": cheap_threshold,
             "defer_for_data": defer_for_data,
             "battery_capacity_kwh": self.planner_state.battery_capacity_kwh,
             "capacity_sample_count": len(self.planner_state.capacity_samples),
@@ -335,6 +354,8 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         target_dt: datetime | None,
         target_soc: float | None,
         current_soc: float | None,
+        car_charge_limit: float | None,
+        cheap_price_threshold: float | None,
     ) -> ChargePlan:
         if target_dt is None or target_soc is None or current_soc is None:
             return ChargePlan(
@@ -349,6 +370,8 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             battery_capacity_kwh=self.planner_state.battery_capacity_kwh,
             charge_power_kw=self.planner_state.charge_power_kw,
             price_points=self._cached_prices,
+            max_soc=car_charge_limit,
+            cheap_price_threshold=cheap_price_threshold,
         )
 
     async def _actuate_switch(
@@ -395,7 +418,10 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
     ) -> bool:
         if target_soc is None:
             return False  # no active occurrence at all — nothing to charge toward
-        if current_soc is not None and current_soc >= target_soc:
+        # Stop point is the effective ceiling: the car's charge limit while
+        # opportunistic top-up is active, otherwise just the target SoC.
+        ceiling = plan.effective_ceiling_soc if plan.effective_ceiling_soc is not None else target_soc
+        if current_soc is not None and current_soc >= ceiling:
             return False
         if defer_for_data:
             # Price data doesn't cover the full window yet, and there's
@@ -413,10 +439,17 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             # fallback below, since forcing a switch on remotely with
             # nothing connected accomplishes nothing.
             return False
-        if target_dt is not None and now >= target_dt:
-            # Deadline already blown and target not met: best-effort charge
-            # regardless of the (now stale/empty) plan. Section 2.5's "target
-            # beats cost" fallback taken to its logical extreme.
+        if (
+            target_dt is not None
+            and now >= target_dt
+            and (current_soc is None or current_soc < target_soc)
+        ):
+            # Deadline already blown and the GUARANTEED target not met yet:
+            # best-effort charge regardless of the (now stale/empty) plan.
+            # Section 2.5's "target beats cost" fallback taken to its logical
+            # extreme — but only up to the guaranteed floor, never forcing
+            # the opportunistic ceiling. Past the floor, we fall through to
+            # the plan below, which only holds cheap opportunistic slots.
             return True
         return any(s.start <= now < s.start + SLOT_DURATION for s in plan.slots)
 
@@ -429,4 +462,6 @@ def _plan_to_dict(plan: ChargePlan) -> dict:
         "target_reachable": plan.target_reachable,
         "required_slot_count": plan.required_slot_count,
         "available_slot_count": plan.available_slot_count,
+        "opportunistic_slot_count": plan.opportunistic_slot_count,
+        "effective_ceiling_soc": plan.effective_ceiling_soc,
     }

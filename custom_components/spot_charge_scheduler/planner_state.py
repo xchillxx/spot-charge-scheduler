@@ -26,7 +26,11 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import MAX_CALIBRATION_SAMPLES, MIN_CALIBRATION_SAMPLES_TO_TRUST
+from .const import (
+    DEFAULT_OPPORTUNISTIC_PERCENTILE,
+    MAX_CALIBRATION_SAMPLES,
+    MIN_CALIBRATION_SAMPLES_TO_TRUST,
+)
 
 STORAGE_VERSION = 1  # unchanged on purpose — see async_load, old/new fields
 # coexist fine via .get()-with-default; no async_migrate_func needed, and
@@ -57,6 +61,11 @@ class PlannerState:
         self.capacity_samples: list[float] = []
         self.charge_power_kw: float = default_charge_power_kw
         self.power_samples: list[float] = []
+        # Opportunistic top-up: a slot counts as "cheap" at/below this
+        # percentile of the last few days' observed prices (see
+        # price_baseline.cheap_price_threshold). Freely editable live via the
+        # "Billig-Schwelle (Perzentil)" number entity.
+        self.opportunistic_percentile: float = DEFAULT_OPPORTUNISTIC_PERCENTILE
         self.master_switch_on: bool = False
         # Charge-session edge tracking for capacity/power calibration (see
         # capacity_estimator.py) — None/empty when no session is open.
@@ -87,6 +96,9 @@ class PlannerState:
         self.capacity_samples = data.get("capacity_samples", [])
         self.charge_power_kw = data.get("charge_power_kw", self._default_charge_power_kw)
         self.power_samples = data.get("power_samples", [])
+        self.opportunistic_percentile = data.get(
+            "opportunistic_percentile", DEFAULT_OPPORTUNISTIC_PERCENTILE
+        )
         self.master_switch_on = data.get("master_switch_on", False)
         self.session_start_soc = data.get("session_start_soc")
         self.session_start_energy_added = data.get("session_start_energy_added")
@@ -139,6 +151,7 @@ class PlannerState:
             "capacity_samples": self.capacity_samples,
             "charge_power_kw": self.charge_power_kw,
             "power_samples": self.power_samples,
+            "opportunistic_percentile": self.opportunistic_percentile,
             "master_switch_on": self.master_switch_on,
             "session_start_soc": self.session_start_soc,
             "session_start_energy_added": self.session_start_energy_added,

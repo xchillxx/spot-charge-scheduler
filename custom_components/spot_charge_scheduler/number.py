@@ -19,7 +19,11 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: SpotChargeCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([BatteryCapacityNumber(coordinator, entry), ChargePowerNumber(coordinator, entry)])
+    async_add_entities([
+        BatteryCapacityNumber(coordinator, entry),
+        ChargePowerNumber(coordinator, entry),
+        OpportunisticPercentileNumber(coordinator, entry),
+    ])
 
 
 class _BaseNumber(CoordinatorEntity[SpotChargeCoordinator], NumberEntity):
@@ -85,3 +89,34 @@ class ChargePowerNumber(_BaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_charge_power_kw(value)
+
+
+class OpportunisticPercentileNumber(_BaseNumber):
+    """How cheap a slot has to be, relative to the last few days of observed
+    prices, before the planner grabs it as opportunistic top-up beyond the
+    guaranteed target SoC (up to the configured car charge-limit entity).
+    A slot counts as cheap at/below this percentile of that window. Lower =
+    stricter (only the very cheapest slots top up); higher = more eager.
+    Has no effect unless a car charge-limit entity is configured, and only
+    once the price archive has ~2 days of history. The companion
+    "Billig-Schwelle" sensor shows what this percentile currently works out
+    to in ct/kWh."""
+
+    _attr_name = "Billig-Schwelle (Perzentil)"
+    _attr_icon = "mdi:sale"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 50
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_opportunistic_percentile"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.opportunistic_percentile
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_opportunistic_percentile(value)

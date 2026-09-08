@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, OPPORTUNISTIC_LOOKBACK_DAYS
 from .coordinator import SpotChargeCoordinator
 from .device import hub_device_info
 
@@ -24,6 +24,7 @@ async def async_setup_entry(
         NextCycleSensor(coordinator, entry),
         CalibratedCapacitySensor(coordinator, entry),
         CalibratedChargePowerSensor(coordinator, entry),
+        CheapThresholdSensor(coordinator, entry),
     ])
 
 
@@ -54,9 +55,15 @@ class ChargePlanSensor(_BaseSensor):
             return "kein_ziel"
         if plan.target_reachable is None:
             return "kein_ziel"
-        if self.coordinator.data.get("current_soc") is not None and self.coordinator.data[
-            "current_soc"
-        ] >= self.coordinator.data["target_soc"]:
+        cur = self.coordinator.data.get("current_soc")
+        tgt = self.coordinator.data.get("target_soc")
+        if cur is not None and tgt is not None and cur >= tgt:
+            # Guaranteed target met. If a car charge-limit is configured and
+            # there's still cheap headroom being planned, we're topping up
+            # opportunistically rather than fully done.
+            ceiling = getattr(plan, "effective_ceiling_soc", None) or tgt
+            if cur < ceiling and plan.slots:
+                return "opportunistisch"
             return "ziel_erreicht"
         if self.coordinator.data.get("is_home") is False:
             return "nicht_zuhause"
@@ -83,6 +90,14 @@ class ChargePlanSensor(_BaseSensor):
             ),
             "benoetigte_slots": plan.required_slot_count,
             "verfuegbare_slots": plan.available_slot_count,
+            "opportunistische_slots": plan.opportunistic_slot_count,
+            "effektives_ladelimit_soc": plan.effective_ceiling_soc,
+            "auto_ladelimit_soc": self.coordinator.data.get("car_charge_limit"),
+            "billig_schwelle_eur_kwh": (
+                round(t, 4)
+                if (t := self.coordinator.data.get("cheap_price_threshold")) is not None
+                else None
+            ),
         }
 
 
@@ -146,3 +161,39 @@ class CalibratedChargePowerSensor(_BaseSensor):
     @property
     def extra_state_attributes(self):
         return {"anzahl_ladevorgaenge": len(self.coordinator.planner_state.power_samples)}
+
+
+class CheapThresholdSensor(_BaseSensor):
+    """What the "Billig-Schwelle (Perzentil)" number currently works out to
+    in ct/kWh, against the last OPPORTUNISTIC_LOOKBACK_DAYS days of observed
+    prices — so the slider's abstract percentile has a concrete price next
+    to it. Unknown until the price archive has enough history to trust the
+    percentile (see price_baseline.cheap_price_threshold)."""
+
+    _attr_name = "Billig-Schwelle"
+    _attr_icon = "mdi:cash-clock"
+    _attr_native_unit_of_measurement = "ct/kWh"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_cheap_threshold"
+
+    @property
+    def native_value(self) -> float | None:
+        data = self.coordinator.data or {}
+        eur_kwh = data.get("cheap_price_threshold")
+        return round(eur_kwh * 100, 2) if eur_kwh is not None else None
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data or {}
+        return {
+            "perzentil": self.coordinator.planner_state.opportunistic_percentile,
+            "zeitraum_tage": OPPORTUNISTIC_LOOKBACK_DAYS,
+            "auto_ladelimit_soc": data.get("car_charge_limit"),
+            "opportunistisch_aktiv": (
+                data.get("cheap_price_threshold") is not None
+                and data.get("car_charge_limit") is not None
+            ),
+        }

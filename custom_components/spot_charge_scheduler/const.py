@@ -57,6 +57,14 @@ CONF_CHARGE_POWER_KW = "charge_power_kw"
 # median power instead of staying pinned to the static config value —
 # same philosophy as the battery-capacity calibrator.
 CONF_CHARGE_POWER_SENSOR = "charge_power_sensor_entity"
+# Optional: a live number entity holding the car's own target charge limit
+# (e.g. number.model_3_charge_limit). When set and readable, the planner is
+# allowed to ALSO grab still-cheap slots beyond the active cycle's
+# guaranteed target SoC, up to this limit — an opportunistic top-up, never
+# forced (see planner.compute_plan / OPPORTUNISTIC_* below). Unset, or the
+# entity unavailable, and nothing changes: only the guaranteed target is
+# pursued, exactly as before.
+CONF_CAR_CHARGE_LIMIT_ENTITY = "car_charge_limit_entity"
 CONF_PRICE_SOURCE = "price_source"
 CONF_TIBBER_HOME_NICKNAME = "tibber_home_nickname"
 CONF_BATTERY_CAPACITY_KWH_DEFAULT = "battery_capacity_kwh_default"
@@ -82,6 +90,26 @@ DEFAULT_TARGET_SOC = 50.0
 # Fallback when a calendar event's title doesn't contain a parseable "NN%"
 # (see schedule.py's parse_target_soc_from_title) — e.g. an event created
 # via a plain "+ add event" with no title at all.
+
+# --- Opportunistic top-up ("charge past the guaranteed target, up to the
+# car's own charge limit, but only while power is genuinely cheap") ---
+# The guaranteed floor stays the active cycle's target SoC: reached by the
+# deadline no matter the price, and the only thing the past-deadline
+# "target beats cost" fallback ever forces. On top of that, if
+# CONF_CAR_CHARGE_LIMIT_ENTITY is configured and currently readable, the
+# planner ALSO takes any still-cheap eligible slots up to that limit —
+# purely "it's cheap right now, might as well", never forced, never
+# extending the promised completion time.
+# "Cheap" = at or below this percentile of every price OBSERVED (i.e. in
+# the past, not the forward forecast) over the last OPPORTUNISTIC_LOOKBACK_DAYS
+# days. Live-tunable via the "Billig-Schwelle (Perzentil)" number entity.
+DEFAULT_OPPORTUNISTIC_PERCENTILE = 10.0
+OPPORTUNISTIC_LOOKBACK_DAYS = 8
+# Below this many archived past-price points in the lookback window, the
+# percentile is too thin to trust — opportunistic top-up stays off until
+# the archive matures (degrades safe, same idea as the calibration guards;
+# ~2 days of 15-minute slots).
+OPPORTUNISTIC_MIN_SAMPLES = 192
 
 # How far back/forward from "now" to expand cycle occurrences when looking
 # for the currently active target (schedule.find_active_occurrence). The

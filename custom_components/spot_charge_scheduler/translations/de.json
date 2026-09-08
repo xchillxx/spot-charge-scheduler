@@ -14,6 +14,7 @@
           "home_zone_entity": "Zone, in der sich das Fahrzeug befinden muss (optional, braucht den Tracker oben)",
           "charge_power_kw": "Angenommene Ladeleistung (kW) — Startwert, wird bei gesetztem Leistungssensor automatisch kalibriert",
           "charge_power_sensor_entity": "Live-Ladeleistung-Sensor (optional, ermöglicht Selbstkalibrierung)",
+          "car_charge_limit_entity": "Auto-Ladelimit-Entität (optional, number) — lädt bei günstigem Strom (vs. letzte 8 Tage) opportunistisch über das Zyklus-Ziel hinaus bis zu diesem SoC",
           "price_source": "Preisquelle",
           "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
           "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"
@@ -38,6 +39,7 @@
           "home_zone_entity": "Zone, in der sich das Fahrzeug befinden muss (optional, braucht den Tracker oben)",
           "charge_power_kw": "Angenommene Ladeleistung (kW) — Startwert, wird bei gesetztem Leistungssensor automatisch kalibriert",
           "charge_power_sensor_entity": "Live-Ladeleistung-Sensor (optional, ermöglicht Selbstkalibrierung)",
+          "car_charge_limit_entity": "Auto-Ladelimit-Entität (optional, number) — lädt bei günstigem Strom (vs. letzte 8 Tage) opportunistisch über das Zyklus-Ziel hinaus bis zu diesem SoC",
           "price_source": "Preisquelle",
           "tibber_home_nickname": "Tibber-Zähler-Spitzname (wie in der Tibber-App angezeigt)",
           "battery_capacity_kwh_default": "Akkukapazität (kWh) — Startwert, wird automatisch verfeinert"

@@ -48,6 +48,21 @@ be added later behind the same `price_source.py` interface.
 - If the deadline is close enough that being picky about price would miss
   it, it automatically schedules (near-)continuous charging instead —
   meeting the target always wins over saving money.
+- **Opportunistic top-up beyond the target.** Point the config at your
+  car's own charge-limit entity (e.g. `number.model_3_charge_limit`) and,
+  once the guaranteed target SoC is covered, it will *also* grab any
+  remaining slots that are genuinely cheap — priced at or below the Nth
+  percentile (default 10, live-adjustable via the "Billig-Schwelle
+  (Perzentil)" number; the "Billig-Schwelle" sensor shows what that
+  percentile currently is in ct/kWh) of every price *observed over the
+  last 8 days* —
+  up to that car limit. This is never forced: it never pushes out the
+  guaranteed completion time, the past-deadline "charge no matter what"
+  fallback still only ever drives to the cycle target, and it stays fully
+  inert until you configure the entity and the price archive has a couple
+  of days of history. So a cycle target of "50% by 04:00" plus a car limit
+  of 80% means *always at least 50%*, and *80% whenever the night is
+  actually cheap*.
 - Won't jump on today's cheapest-looking slots if the price data doesn't
   cover the full window yet (e.g. a target tomorrow morning, checked
   before tomorrow's prices are published) — it waits for fuller data
@@ -104,6 +119,7 @@ Settings → Devices & Services → Add Integration → "Spot Charge Scheduler".
 | Home zone | no | any `zone.*`, e.g. `zone.home` — requires the tracker above to have any effect |
 | Assumed charging power (kW) | yes | starting value; self-calibrated over time once the sensor below is set |
 | Live charging power sensor | no | e.g. `sensor.model_3_charger_power` — a real **power** sensor (kW), not a "rate" sensor (distance/hour); enables power self-calibration |
+| Car charge-limit entity | no | a `number.*` holding the car's own target charge limit (e.g. `number.model_3_charge_limit`); enables opportunistic top-up beyond the cycle target while power is cheap vs. the last 8 days. Unset → feature off |
 | Price source | yes | only "Tibber" today |
 | Tibber home nickname | yes | as shown in the Tibber app, e.g. "Haus" |
 | Battery capacity (kWh) | yes | starting estimate; overwritten automatically once enough real sessions are observed |
@@ -117,9 +133,11 @@ All fields are editable later via the integration's "Configure" option.
 | Ladeplan-Kalender | `calendar` | Every charge-target cycle, recurring and one-off — create/drag/delete events here directly |
 | Akkukapazität | `number` | Capacity used for planning; auto-overwritten by the calibrator |
 | Ladeleistung | `number` | Charging power used for planning; auto-overwritten by the calibrator once a power sensor is set |
+| Billig-Schwelle (Perzentil) | `number` | How cheap (percentile of the last 8 days' observed prices, default 10) a slot must be before opportunistic top-up takes it; no effect without a car charge-limit entity |
+| Billig-Schwelle | `sensor` | What that percentile currently works out to, in ct/kWh, against the last 8 days — plus whether opportunistic top-up is active |
 | Lademodus aktiv | `switch` | Master switch — only while on does this integration touch the charge switch |
 | Pausiert: \<cycle summary\> | `switch` | One per cycle, created dynamically — pause/resume an entire recurring series at once |
-| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`nicht_zuhause`/`wartet_auf_daten`) + attributes: active cycle, next slots, estimated cost, estimated completion |
+| Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`opportunistisch`/`nicht_zuhause`/`wartet_auf_daten`) + attributes: active cycle, next slots, estimated cost, estimated completion, opportunistic-slot count, effective ceiling SoC, cheap-price threshold |
 | Nächster Zyklus | `sensor` | Timestamp of the currently active target occurrence |
 | Kalibrierte Kapazität | `sensor` | The calibrator's current capacity estimate + how many sessions it's based on |
 | Kalibrierte Ladeleistung | `sensor` | The calibrator's current power estimate + how many sessions it's based on |
