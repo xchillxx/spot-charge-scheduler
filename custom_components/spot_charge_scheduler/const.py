@@ -2,9 +2,19 @@
 from __future__ import annotations
 
 DOMAIN = "spot_charge_scheduler"
-PLATFORMS = ["sensor", "number", "switch", "calendar"]
+PLATFORMS = ["sensor", "number", "switch", "text", "time", "calendar"]
 
 UPDATE_INTERVAL_SECONDS = 60
+
+# Charge-target "cycles" are a FIXED set of editable slots (v0.13.0) — each
+# one a handful of native entities (enabled switch, name text, target-SoC
+# number, time, rhythm number) shown directly on the dashboard, no calendar
+# editing / service calls. Most stay empty; the user fills as many as they
+# need (two shift patterns + a few spares in practice).
+NUM_CYCLE_SLOTS = 6
+DEFAULT_SLOT_TARGET_SOC = 65.0
+DEFAULT_SLOT_TIME = "04:30"  # HH:MM, local
+DEFAULT_SLOT_RHYTHM_DAYS = 4  # 0 = one-off
 
 # How often (minimum spacing) we're willing to call a price-source's fetch,
 # even if our cached data doesn't yet cover the target — avoids hammering
@@ -87,9 +97,8 @@ PRICE_SOURCES = [PRICE_SOURCE_TIBBER]
 PRICE_BRIDGE_TOLERANCE = 0.05
 
 DEFAULT_TARGET_SOC = 50.0
-# Fallback when a calendar event's title doesn't contain a parseable "NN%"
-# (see schedule.py's parse_target_soc_from_title) — e.g. an event created
-# via a plain "+ add event" with no title at all.
+# Last-resort fallback if a slot somehow has no parseable target_soc
+# (see schedule.expand_slot). Normal slots default to DEFAULT_SLOT_TARGET_SOC.
 
 # --- Opportunistic top-up ("charge past the guaranteed target, up to the
 # car's own charge limit, but only while power is genuinely cheap") ---

@@ -110,79 +110,26 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
     async def async_flush_state(self) -> None:
         await self.planner_state.async_save_now()
 
-    # --- entity/calendar-facing setters (bypass the config-entry reload path) ---
+    # --- per-slot setters (called by the slot entities; bypass the
+    #     config-entry reload path so editing a slot never interrupts a
+    #     running charge session) ---
 
-    async def async_add_cycle(
-        self, anchor: datetime, target_soc: float, rhythm_days: int, summary: str
-    ) -> str:
-        """Create a new charge-target cycle (recurring if rhythm_days > 0,
-        one-off otherwise — e.g. an ad-hoc "I need to leave early" addition).
-        Returns the new cycle's id."""
-        cycle_id = schedule.new_cycle_id()
-        self.planner_state.cycles.append({
-            "id": cycle_id,
-            "summary": summary,
-            "target_soc": target_soc,
-            "anchor": dt_util.as_local(anchor).isoformat(),
-            "rhythm_days": rhythm_days,
-            "enabled": True,
-        })
-        self._invalidate_price_cache()
-        self.planner_state.async_save()
-        await self.async_request_refresh()
-        return cycle_id
+    def get_slot(self, slot_no: int) -> dict:
+        """Slots are numbered 1..NUM_CYCLE_SLOTS; the list is always exactly
+        that long (planner_state guarantees it)."""
+        return self.planner_state.cycle_slots[slot_no - 1]
 
-    async def async_set_cycle_enabled(self, cycle_id: str, enabled: bool) -> None:
-        """Pause/resume an entire recurring series (e.g. for vacation) —
-        unlike deleting an occurrence, this doesn't touch any individual
-        instance, so resuming brings back every occurrence exactly as
-        scheduled, including ones that would have fired while paused."""
-        for cycle in self.planner_state.cycles:
-            if cycle["id"] == cycle_id:
-                cycle["enabled"] = enabled
-                break
-        self._invalidate_price_cache()
-        self.planner_state.async_save()
-        await self.async_request_refresh()
-
-    async def async_update_cycle(
-        self, cycle_id: str, target_soc: float | None, rhythm_days: int | None
-    ) -> None:
-        """Change a cycle's target SoC and/or rhythm for every FUTURE
-        occurrence at once (e.g. "80% is fine now, but 50% is enough once
-        winter prices get expensive") — unlike an occurrence override,
-        which only ever affects a single dragged/deleted instance, this
-        edits the series itself. Occurrences already individually
-        rescheduled (occurrence_overrides) keep their overridden start
-        time; only the target_soc/rhythm they'd otherwise inherit changes."""
-        for cycle in self.planner_state.cycles:
-            if cycle["id"] == cycle_id:
-                if target_soc is not None:
-                    cycle["target_soc"] = target_soc
-                if rhythm_days is not None:
-                    cycle["rhythm_days"] = rhythm_days
-                break
-        self._invalidate_price_cache()
-        self.planner_state.async_save()
-        await self.async_request_refresh()
-
-    async def async_set_occurrence_start(
-        self, cycle_id: str, original_start: datetime, new_start: datetime
-    ) -> None:
-        """Reschedule ONE occurrence of a (possibly recurring) cycle — the
-        rest of the series is untouched, same as dragging a single instance
-        in any calendar app."""
-        key = schedule.override_key(cycle_id, original_start)
-        override = self.planner_state.occurrence_overrides.setdefault(key, {})
-        override["start"] = dt_util.as_local(new_start).isoformat()
-        override.pop("deleted", None)
-        self._invalidate_price_cache()
-        self.planner_state.async_save()
-        await self.async_request_refresh()
-
-    async def async_delete_occurrence(self, cycle_id: str, original_start: datetime) -> None:
-        key = schedule.override_key(cycle_id, original_start)
-        self.planner_state.occurrence_overrides[key] = {"deleted": True}
+    async def async_set_slot_field(self, slot_no: int, field: str, value) -> None:
+        slot = self.get_slot(slot_no)
+        slot[field] = value
+        # Re-base the N-day rhythm phase to "now" when a slot is switched
+        # on, or its rhythm changes — that's what "ab jetzt alle N Tage"
+        # (and resuming after a holiday) is supposed to mean. Editing the
+        # name / target SoC / time-of-day leaves the phase alone.
+        if (field == "enabled" and value) or (
+            field == "rhythm_days" and slot.get("enabled")
+        ):
+            slot["anchor"] = dt_util.now().isoformat()
         self._invalidate_price_cache()
         self.planner_state.async_save()
         await self.async_request_refresh()
@@ -248,12 +195,12 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             )
             self._was_charging = is_charging
 
-        # Which occurrence (across all cycles) we're planning/charging
-        # toward right now — see schedule.find_active_occurrence for how
-        # several independent recurring cycles interleave without any
-        # explicit "advance to next" step; it's always freshly derived.
+        # Which slot's occurrence we're planning/charging toward right now
+        # — see schedule.find_active_occurrence for how several independent
+        # slots interleave without any explicit "advance to next" step;
+        # it's always freshly derived.
         active: Occurrence | None = schedule.find_active_occurrence(
-            self.planner_state.cycles, self.planner_state.occurrence_overrides, now, current_soc
+            self.planner_state.cycle_slots, now, current_soc
         )
         target_dt = active.start if active else None
         target_soc = active.target_soc if active else None

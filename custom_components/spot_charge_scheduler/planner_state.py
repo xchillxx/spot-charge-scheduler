@@ -1,36 +1,104 @@
-"""Live planning state: charge cycles (recurring or one-off), per-occurrence
-overrides, capacity/power calibration, and the currently computed plan.
+"""Live planning state: the fixed set of editable charge-target "cycle
+slots", capacity/power calibration, and the currently computed plan.
 
 Deliberately NOT stored in the config entry's `entry.data` the way SLS's
 number entities do it: those trigger a full integration reload on every
 write (fine for rarely-changed setup fields like "which switch entity",
-wrong for something meant to be edited freely — dragging a calendar event
-around must not interrupt an active charge session via a reload). This
-lives in its own Store instead, and entities/the calendar write straight
-into the in-memory dict + ask the coordinator to recompute — no reload
-involved.
+wrong for something meant to be edited freely — nudging a slot's target
+SoC must not interrupt an active charge session via a reload). This lives
+in its own Store instead, and the per-slot entities write straight into
+the in-memory dict + ask the coordinator to recompute — no reload.
 
-A "cycle" is a charge-target definition: target SoC, an anchor date/time,
-and an optional repeat interval in days (0/None = one-off, e.g. an ad-hoc
-"I need to leave early" addition). See schedule.py for how cycles get
-expanded into concrete calendar occurrences and how a per-occurrence
-override (a dragged/rescheduled single instance) is layered on top without
-disturbing the rest of the series — the same exception model any calendar
-app uses for "edit this occurrence only".
+A "cycle slot" is a charge-target definition edited directly through native
+entities on the dashboard (v0.13.0 — replaced the calendar-authored cycles
++ per-occurrence override model, which proved too fiddly). Shape:
+    {slot: 1..NUM_CYCLE_SLOTS, enabled, name, target_soc,
+     time ("HH:MM"), rhythm_days (0 = one-off), anchor (ISO | None)}
+See schedule.py for expansion into occurrences.
 """
 from __future__ import annotations
 
+import logging
 from statistics import median
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_OPPORTUNISTIC_PERCENTILE,
+    DEFAULT_SLOT_RHYTHM_DAYS,
+    DEFAULT_SLOT_TARGET_SOC,
+    DEFAULT_SLOT_TIME,
     MAX_CALIBRATION_SAMPLES,
     MIN_CALIBRATION_SAMPLES_TO_TRUST,
+    NUM_CYCLE_SLOTS,
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _blank_slot(n: int) -> dict[str, Any]:
+    return {
+        "slot": n,
+        "enabled": False,
+        "name": "",
+        "target_soc": DEFAULT_SLOT_TARGET_SOC,
+        "time": DEFAULT_SLOT_TIME,
+        "rhythm_days": DEFAULT_SLOT_RHYTHM_DAYS,
+        "anchor": None,
+    }
+
+
+def _default_slots() -> list[dict[str, Any]]:
+    return [_blank_slot(n) for n in range(1, NUM_CYCLE_SLOTS + 1)]
+
+
+def _coerce_slots(raw: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Force a stored slot list back to exactly NUM_CYCLE_SLOTS well-formed
+    entries (pad short, drop extra, fill missing keys) so nothing
+    downstream has to defend against a half-written slot."""
+    slots = _default_slots()
+    for i, stored in enumerate((raw or [])[:NUM_CYCLE_SLOTS]):
+        merged = {**slots[i], **{k: stored[k] for k in slots[i] if k in stored}}
+        merged["slot"] = i + 1
+        slots[i] = merged
+    return slots
+
+
+def _migrate_from_cycles(old_cycles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One-time upgrade from the pre-0.13.0 calendar-cycle model. Only the
+    recurring cycles carry over (a bare one-off had no lasting identity
+    worth a slot, and any that were "deleted" in the old UI still lingered
+    as dead entries) — earliest anchor first, into the lowest slots."""
+    recurring = [
+        c for c in old_cycles
+        if int(c.get("rhythm_days") or 0) > 0 and c.get("enabled", True)
+    ]
+    recurring.sort(key=lambda c: c.get("anchor") or "")
+    slots = _default_slots()
+    for i, cycle in enumerate(recurring[:NUM_CYCLE_SLOTS]):
+        anchor = dt_util.parse_datetime(cycle.get("anchor") or "")
+        name = str(cycle.get("summary") or "").strip()
+        # strip a trailing "(NN%)" the old display code may have baked in
+        if name.endswith("%)") and "(" in name:
+            name = name[: name.rfind("(")].strip()
+        slots[i] = {
+            "slot": i + 1,
+            "enabled": True,
+            "name": name,
+            "target_soc": float(cycle.get("target_soc") or DEFAULT_SLOT_TARGET_SOC),
+            "time": anchor.strftime("%H:%M") if anchor else DEFAULT_SLOT_TIME,
+            "rhythm_days": int(cycle.get("rhythm_days") or DEFAULT_SLOT_RHYTHM_DAYS),
+            # keep the original anchor so the existing N-day phase is not
+            # disturbed by the upgrade
+            "anchor": cycle.get("anchor"),
+        }
+    _LOGGER.info(
+        "Spot Charge Scheduler: migrated %d recurring cycle(s) into slots", len(recurring[:NUM_CYCLE_SLOTS])
+    )
+    return slots
 
 STORAGE_VERSION = 1  # unchanged on purpose — see async_load, old/new fields
 # coexist fine via .get()-with-default; no async_migrate_func needed, and
@@ -48,15 +116,10 @@ class PlannerState:
         self._store: Store = Store(hass, STORAGE_VERSION, f"spot_charge_scheduler_{entry_id}")
         self._default_capacity_kwh = default_capacity_kwh
         self._default_charge_power_kw = default_charge_power_kw
-        # Each: {id, summary, target_soc, anchor (ISO datetime), rhythm_days
-        # (int, 0 = one-off), enabled}. See schedule.py for expansion into
-        # occurrences.
-        self.cycles: list[dict[str, Any]] = []
-        # Keyed by f"{cycle_id}::{original_occurrence_start_iso}" (the
-        # *unshifted* anchor-aligned time — stable so a re-dragged event
-        # updates the same override instead of accumulating duplicates).
-        # Value: {"start": new_start_iso | None, "deleted": bool}.
-        self.occurrence_overrides: dict[str, dict[str, Any]] = {}
+        # Fixed list of NUM_CYCLE_SLOTS slot dicts (see module docstring +
+        # schedule.py). Always exactly that many entries; unused ones just
+        # have enabled=False.
+        self.cycle_slots: list[dict[str, Any]] = _default_slots()
         self.battery_capacity_kwh: float = default_capacity_kwh
         self.capacity_samples: list[float] = []
         self.charge_power_kw: float = default_charge_power_kw
@@ -90,8 +153,12 @@ class PlannerState:
         data = await self._store.async_load()
         if not data:
             return
-        self.cycles = data.get("cycles", [])
-        self.occurrence_overrides = data.get("occurrence_overrides", {})
+        if "cycle_slots" in data:
+            self.cycle_slots = _coerce_slots(data["cycle_slots"])
+        elif data.get("cycles"):
+            # pre-0.13.0 store — migrate once; the old keys are simply not
+            # written back by _data_to_save, so they drop out on next save
+            self.cycle_slots = _migrate_from_cycles(data["cycles"])
         self.battery_capacity_kwh = data.get("battery_capacity_kwh", self._default_capacity_kwh)
         self.capacity_samples = data.get("capacity_samples", [])
         self.charge_power_kw = data.get("charge_power_kw", self._default_charge_power_kw)
@@ -145,8 +212,7 @@ class PlannerState:
 
     def _data_to_save(self) -> dict:
         return {
-            "cycles": self.cycles,
-            "occurrence_overrides": self.occurrence_overrides,
+            "cycle_slots": self.cycle_slots,
             "battery_capacity_kwh": self.battery_capacity_kwh,
             "capacity_samples": self.capacity_samples,
             "charge_power_kw": self.charge_power_kw,

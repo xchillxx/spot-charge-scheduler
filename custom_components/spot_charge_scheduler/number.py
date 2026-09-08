@@ -7,10 +7,11 @@ from __future__ import annotations
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, NUM_CYCLE_SLOTS
 from .coordinator import SpotChargeCoordinator
 from .device import hub_device_info
 
@@ -19,11 +20,15 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: SpotChargeCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
+    entities = [
         BatteryCapacityNumber(coordinator, entry),
         ChargePowerNumber(coordinator, entry),
         OpportunisticPercentileNumber(coordinator, entry),
-    ])
+    ]
+    for n in range(1, NUM_CYCLE_SLOTS + 1):
+        entities.append(CycleSlotTargetSocNumber(coordinator, entry, n))
+        entities.append(CycleSlotRhythmNumber(coordinator, entry, n))
+    async_add_entities(entities)
 
 
 class _BaseNumber(CoordinatorEntity[SpotChargeCoordinator], NumberEntity):
@@ -120,3 +125,55 @@ class OpportunisticPercentileNumber(_BaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_opportunistic_percentile(value)
+
+
+class _SlotNumber(_BaseNumber):
+    """Shared base for the per-slot number entities — see planner_state.py's
+    slot model and coordinator.async_set_slot_field."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _slot_field: str
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry, slot_no: int) -> None:
+        super().__init__(coordinator, entry)
+        self._slot_no = slot_no
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.get_slot(self._slot_no)[self._slot_field])
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_slot_field(self._slot_no, self._slot_field, value)
+
+
+class CycleSlotTargetSocNumber(_SlotNumber):
+    _slot_field = "target_soc"
+    _attr_icon = "mdi:battery-charging-medium"
+    _attr_native_min_value = 5
+    _attr_native_max_value = 100
+    _attr_native_step = 5
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry, slot_no: int) -> None:
+        super().__init__(coordinator, entry, slot_no)
+        self._attr_unique_id = f"{entry.entry_id}_slot_{slot_no}_target_soc"
+        self._attr_name = f"Slot {slot_no} Ziel-SoC"
+
+
+class CycleSlotRhythmNumber(_SlotNumber):
+    _slot_field = "rhythm_days"
+    _attr_icon = "mdi:calendar-sync"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 30
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "Tage"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry, slot_no: int) -> None:
+        super().__init__(coordinator, entry, slot_no)
+        self._attr_unique_id = f"{entry.entry_id}_slot_{slot_no}_rhythm"
+        self._attr_name = f"Slot {slot_no} Rhythmus (Tage)"
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_slot_field(self._slot_no, self._slot_field, int(value))

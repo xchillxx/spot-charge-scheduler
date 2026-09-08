@@ -1,10 +1,14 @@
 # Spot Charge Scheduler
 
 Home Assistant custom integration for price-optimized EV charging with a
-target SoC/time and a repeating cycle — e.g. "50% charged by 04:00, every
+target SoC/time and a repeating cycle — e.g. "65% charged by 04:30, every
 4 days" for a shift schedule. Picks the cheapest 15-minute price slots that
 still meet the deadline; if time runs out, it automatically shifts to
 charging every remaining slot so the deadline is still met, price be damned.
+
+Cycles are a fixed set of **editable slots** — each one a handful of native
+entities (on/off, name, target SoC, time, rhythm) you change straight on
+the dashboard. No calendar editing, no service calls.
 
 It's not Tesla- or Tibber-specific by design: every controlled/read entity
 (charge switch, SoC sensor, etc.) is picked in the config flow, so it works
@@ -17,27 +21,20 @@ be added later behind the same `price_source.py` interface.
 
 ## What it does
 
-- Charge targets ("cycles") live on a normal Home Assistant **calendar** —
-  each is a title with a percentage (e.g. "50%"), a start time, and
-  optionally a repeat interval (every N days). That's the whole setup for
-  a recurring target — no separate helper entities. Create one via the
-  `spot_charge_scheduler.add_cycle` service (Developer Tools → Actions
-  auto-generates a proper datetime/percentage/repeat-interval form from
-  it) — not the calendar card's own "+" button, which HA core briefly had
-  and then regressed (removed between 2026.2.0 and 2026.3.0).
-- Any number of cycles can be active at once, recurring or one-off (e.g. an
-  ad-hoc "I have to leave unexpectedly" addition) — they interleave
-  automatically: whichever one's deadline comes next is what gets planned
-  for.
-- Drag an event in the calendar to reschedule just that one occurrence —
-  the rest of its series is untouched, same as any calendar app's "edit
-  this event only". Each cycle also gets its own "Pausiert: …" switch, for
-  pausing an entire recurring series at once (e.g. over a vacation) without
-  deleting/re-adding it or clicking through every individual occurrence.
-  To change target SoC or repeat interval for an entire series at once
-  (e.g. "80% was fine, 50% is enough once winter prices bite"), use the
-  `spot_charge_scheduler.update_cycle` service — it targets that same
-  "Pausiert: …" switch to identify which series to edit.
+- Charge targets are **6 fixed cycle slots**. Each slot is five native
+  entities you edit directly on the dashboard: an on/off switch, a name, a
+  target-SoC number, a time, and a rhythm-in-days number (`0` = one-off).
+  Fill as many as you need — two shift patterns plus a few spares in
+  practice. Nothing else to set up, no calendar editing, no services.
+- All slots run at once; the integration always plans for whichever slot's
+  next deadline comes first. A `0`-day slot is a one-off for an ad-hoc
+  "I have to leave early tomorrow".
+- The rhythm counts **from now**: switching a slot on (or changing its
+  rhythm) sets "next in N days". To pause a slot for a holiday, just switch
+  it off — every setting is kept and it resumes cleanly when you switch it
+  back on.
+- The **calendar** entity is a read-only month overview of what's coming
+  up; you don't edit anything there.
 - It fetches Tibber's day-ahead 15-minute prices for the window up to
   whichever cycle's deadline is currently active, and schedules the
   cheapest slots that add up to enough charging time — preferring
@@ -72,7 +69,7 @@ be added later behind the same `price_source.py` interface.
   waits longer in that case even once *some* data is technically
   available; a below-typical price is charged on right away instead.
 - Once the target SoC is reached, charging stops immediately regardless of
-  the remaining schedule, and the next-earliest cycle occurrence becomes
+  the remaining schedule, and the next-earliest slot occurrence becomes
   the new active target. A deadline that's missed by a lot (more than
   MISSED_DEADLINE_GRACE_HOURS, default 4h) is abandoned the same way
   instead of being chased forever — a shift's 04:30 target is no longer
@@ -130,28 +127,30 @@ All fields are editable later via the integration's "Configure" option.
 
 | Entity | Type | Purpose |
 |---|---|---|
-| Ladeplan-Kalender | `calendar` | Every charge-target cycle, recurring and one-off — create/drag/delete events here directly |
+| Slot N aktiv | `switch` | Cycle slot N on/off. Off = paused (settings kept). One per slot (N = 1…6) |
+| Slot N Name | `text` | Free-form label, e.g. "Tagschicht" |
+| Slot N Ziel-SoC | `number` | Target state of charge for that slot, 5–100 %, 5 % steps |
+| Slot N Uhrzeit | `time` | Time of day the target must be reached by |
+| Slot N Rhythmus (Tage) | `number` | Repeat every N days from activation; `0` = one-off |
+| Ladeplan-Kalender | `calendar` | **Read-only** month overview of upcoming slot occurrences |
 | Akkukapazität | `number` | Capacity used for planning; auto-overwritten by the calibrator |
 | Ladeleistung | `number` | Charging power used for planning; auto-overwritten by the calibrator once a power sensor is set |
 | Billig-Schwelle (Perzentil) | `number` | How cheap (percentile of the last 8 days' observed prices, default 10) a slot must be before opportunistic top-up takes it; no effect without a car charge-limit entity |
 | Billig-Schwelle | `sensor` | What that percentile currently works out to, in ct/kWh, against the last 8 days — plus whether opportunistic top-up is active |
 | Lademodus aktiv | `switch` | Master switch — only while on does this integration touch the charge switch |
-| Pausiert: \<cycle summary\> | `switch` | One per cycle, created dynamically — pause/resume an entire recurring series at once |
 | Ladeplan | `sensor` | Status (`kein_ziel`/`erreichbar`/`nicht_erreichbar`/`ziel_erreicht`/`opportunistisch`/`nicht_zuhause`/`wartet_auf_daten`) + attributes: active cycle, next slots, estimated cost, estimated completion, opportunistic-slot count, effective ceiling SoC, cheap-price threshold |
 | Nächster Zyklus | `sensor` | Timestamp of the currently active target occurrence |
 | Kalibrierte Kapazität | `sensor` | The calibrator's current capacity estimate + how many sessions it's based on |
 | Kalibrierte Ladeleistung | `sensor` | The calibrator's current power estimate + how many sessions it's based on |
 
-## Calendar event conventions
+## Upgrading from ≤ 0.12.0
 
-The calendar UI has no custom fields, so two pieces of information ride
-along in the event itself:
-- **Target SoC**: the first `NN%` found in the title or description (e.g.
-  "50%", "Ladeziel 80%"). No percentage found → falls back to 50%.
-- **Repeat interval**: the calendar's own "Repeat" option, daily or weekly
-  with a plain interval (e.g. every 4 days, every 1 week). Anything fancier
-  (specific weekdays, an end date) isn't understood and is treated as a
-  one-off instead of silently doing something else.
+The old model — cycles authored as calendar events, per-occurrence drag
+overrides, `add_cycle` / `update_cycle` services, dynamic "Pausiert: …"
+switches — is gone. On first start after the upgrade, every **recurring**
+cycle you had is migrated into a slot (earliest first); bare one-off
+calendar entries are dropped. Re-create any one-offs you still need in a
+free slot with rhythm `0`.
 
 ## License
 

@@ -80,7 +80,7 @@ class ChargePlanSensor(_BaseSensor):
             return {}
         active = self.coordinator.data.get("active_occurrence")
         return {
-            "aktiver_zyklus": active.summary if active else None,
+            "aktiver_zyklus": active.name if active else None,
             "naechste_slots": [
                 {"start": s.start.isoformat(), "preis_eur_kwh": s.price} for s in plan.slots
             ],
@@ -124,7 +124,7 @@ class NextCycleSensor(_BaseSensor):
         active = self.coordinator.data.get("active_occurrence")
         if not active:
             return {}
-        return {"ziel_soc": active.target_soc, "titel": active.summary}
+        return {"ziel_soc": active.target_soc, "titel": active.name}
 
 
 class CalibratedCapacitySensor(_BaseSensor):
