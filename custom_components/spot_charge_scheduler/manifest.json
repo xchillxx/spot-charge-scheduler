@@ -1,6 +1,9 @@
 {
   "domain": "spot_charge_scheduler",
   "name": "Spot Charge Scheduler",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@xchillxx"
   ],
@@ -10,5 +13,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/xchillxx/spot-charge-scheduler/issues",
   "requirements": [],
-  "version": "0.14.0"
+  "version": "0.14.1"
 }
