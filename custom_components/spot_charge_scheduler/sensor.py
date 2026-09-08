@@ -25,7 +25,6 @@ async def async_setup_entry(
         CalibratedCapacitySensor(coordinator, entry),
         CalibratedChargePowerSensor(coordinator, entry),
         CheapThresholdSensor(coordinator, entry),
-        FuelPriceSensor(coordinator, entry),
         CombustionBreakEvenSensor(coordinator, entry),
     ])
 
@@ -198,38 +197,6 @@ class CheapThresholdSensor(_BaseSensor):
                 data.get("cheap_price_threshold") is not None
                 and data.get("car_charge_limit") is not None
             ),
-        }
-
-
-class FuelPriceSensor(_BaseSensor):
-    """Fuel price used for the comparison: the cheapest local Tankerkönig
-    price when available, otherwise the manually set fallback (the `quelle`
-    attribute says which)."""
-
-    _attr_name = "Spritpreis"
-    _attr_icon = "mdi:gas-station"
-    _attr_native_unit_of_measurement = "€/L"
-    _attr_suggested_display_precision = 3
-
-    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_fuel_price"
-
-    @property
-    def native_value(self) -> float | None:
-        c = (self.coordinator.data or {}).get("combustion")
-        return c.get("fuel_price_eur_l") if c else None
-
-    @property
-    def extra_state_attributes(self):
-        c = (self.coordinator.data or {}).get("combustion")
-        if not c:
-            return {}
-        return {
-            "quelle": c.get("fuel_price_source"),
-            "kraftstoffart": c.get("fuel_type"),
-            "tankstelle": c.get("station"),
-            "entfernung_km": c.get("station_distance_km"),
         }
 
 

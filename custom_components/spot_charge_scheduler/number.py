@@ -26,7 +26,7 @@ async def async_setup_entry(
         OpportunisticPercentileNumber(coordinator, entry),
         IceConsumptionNumber(coordinator, entry),
         EvConsumptionNumber(coordinator, entry),
-        ManualFuelPriceNumber(coordinator, entry),
+        FuelPriceNumber(coordinator, entry),
     ]
     for n in range(1, NUM_CYCLE_SLOTS + 1):
         entities.append(CycleSlotTargetSocNumber(coordinator, entry, n))
@@ -181,14 +181,15 @@ class EvConsumptionNumber(_BaseNumber):
         await self.coordinator.async_set_ev_consumption_kwh_100km(value)
 
 
-class ManualFuelPriceNumber(_BaseNumber):
-    """Fallback fuel price (€/L) for the break-even comparison whenever a
-    live Tankerkönig price isn't available (no/pending API key, fetch
-    failing). A live price always overrides this — keep it roughly current
-    so the comparison stays meaningful until the API key is active."""
+class FuelPriceNumber(_BaseNumber):
+    """Fuel price (€/L) for the break-even comparison. Set it by hand; once
+    a Tankerkönig API key is configured the integration overwrites it every
+    hour with the cheapest local price (same idea as the auto-calibrated
+    capacity / power numbers). The `quelle` attribute says whether the
+    value showing is your manual one or the live one."""
 
-    _attr_name = "Spritpreis (manuell)"
-    _attr_icon = "mdi:gas-station-outline"
+    _attr_name = "Spritpreis"
+    _attr_icon = "mdi:gas-station"
     _attr_native_min_value = 0.5
     _attr_native_max_value = 3
     _attr_native_step = 0.001
@@ -197,14 +198,24 @@ class ManualFuelPriceNumber(_BaseNumber):
 
     def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_unique_id = f"{entry.entry_id}_fuel_price_manual"
+        self._attr_unique_id = f"{entry.entry_id}_fuel_price"
 
     @property
     def native_value(self) -> float:
-        return self.coordinator.planner_state.fuel_price_manual_eur_l
+        return self.coordinator.planner_state.fuel_price_eur_l
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator.async_set_fuel_price_manual_eur_l(value)
+        await self.coordinator.async_set_fuel_price_eur_l(value)
+
+    @property
+    def extra_state_attributes(self):
+        c = (self.coordinator.data or {}).get("combustion") or {}
+        return {
+            "quelle": c.get("fuel_price_source"),
+            "kraftstoffart": c.get("fuel_type"),
+            "tankstelle": c.get("station"),
+            "entfernung_km": c.get("station_distance_km"),
+        }
 
 
 class _SlotNumber(_BaseNumber):

@@ -137,9 +137,10 @@ class PlannerState:
         # once there's enough odometer/energy history (consumption_estimator.py).
         self.ice_consumption_l_100km: float = DEFAULT_ICE_CONSUMPTION_L_100KM
         self.ev_consumption_kwh_100km: float = DEFAULT_EV_CONSUMPTION_KWH_100KM
-        # Fallback fuel price for the break-even calc when no live Tankerkönig
-        # price is available; a live price always overrides it.
-        self.fuel_price_manual_eur_l: float = DEFAULT_FUEL_PRICE_EUR_L
+        # Fuel price (€/L) for the break-even calc — hand-set, then
+        # overwritten hourly by the coordinator once a Tankerkönig key is
+        # configured (see FuelPriceNumber / _maybe_fetch_fuel_price).
+        self.fuel_price_eur_l: float = DEFAULT_FUEL_PRICE_EUR_L
         self.master_switch_on: bool = False
         # Charge-session edge tracking for capacity/power calibration (see
         # capacity_estimator.py) — None/empty when no session is open.
@@ -183,8 +184,9 @@ class PlannerState:
         self.ev_consumption_kwh_100km = data.get(
             "ev_consumption_kwh_100km", DEFAULT_EV_CONSUMPTION_KWH_100KM
         )
-        self.fuel_price_manual_eur_l = data.get(
-            "fuel_price_manual_eur_l", DEFAULT_FUEL_PRICE_EUR_L
+        self.fuel_price_eur_l = data.get(
+            "fuel_price_eur_l",
+            data.get("fuel_price_manual_eur_l", DEFAULT_FUEL_PRICE_EUR_L),
         )
         self.master_switch_on = data.get("master_switch_on", False)
         self.session_start_soc = data.get("session_start_soc")
@@ -240,7 +242,7 @@ class PlannerState:
             "opportunistic_percentile": self.opportunistic_percentile,
             "ice_consumption_l_100km": self.ice_consumption_l_100km,
             "ev_consumption_kwh_100km": self.ev_consumption_kwh_100km,
-            "fuel_price_manual_eur_l": self.fuel_price_manual_eur_l,
+            "fuel_price_eur_l": self.fuel_price_eur_l,
             "master_switch_on": self.master_switch_on,
             "session_start_soc": self.session_start_soc,
             "session_start_energy_added": self.session_start_energy_added,

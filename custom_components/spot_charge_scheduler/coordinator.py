@@ -189,8 +189,8 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
-    async def async_set_fuel_price_manual_eur_l(self, value: float) -> None:
-        self.planner_state.fuel_price_manual_eur_l = value
+    async def async_set_fuel_price_eur_l(self, value: float) -> None:
+        self.planner_state.fuel_price_eur_l = value
         self.planner_state.async_save()
         await self.async_request_refresh()
 
@@ -318,6 +318,12 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
                 float(self._config.get(CONF_FUEL_RADIUS_KM) or DEFAULT_FUEL_RADIUS_KM),
                 str(self._config.get(CONF_FUEL_TYPE) or DEFAULT_FUEL_TYPE),
             )
+            if self._fuel_price is not None:
+                # Self-calibrating: the "Spritpreis" number now tracks the
+                # live cheapest-local price (still hand-editable; overwritten
+                # again on the next hourly fetch).
+                self.planner_state.fuel_price_eur_l = self._fuel_price.price_eur_per_l
+                self.planner_state.async_save()
             self._fuel_fetch_retry_interval = FUEL_FETCH_MIN_INTERVAL_SECONDS
         except Exception:  # noqa: BLE001 - a fuel-price hiccup must not crash the cycle
             _LOGGER.warning("Tankerkönig fuel-price fetch failed", exc_info=True)
@@ -342,23 +348,25 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
 
     def _combustion_comparison(self, now: datetime) -> dict | None:
         """Break-even electricity price: at/above how many €/kWh would the
-        combustion car cost the same per km. Always computable — a live
-        Tankerkönig price when we have one, otherwise the manually set
-        fallback price (see ManualFuelPriceNumber)."""
+        combustion car cost the same per km. Always computable — the
+        "Spritpreis" number holds either a live Tankerkönig price or the
+        hand-set one; `fuel_price_source` says which."""
         ev_kwh = self.planner_state.ev_consumption_kwh_100km
         ice_l = self.planner_state.ice_consumption_l_100km
         if ev_kwh <= 0:
             return None
 
+        # The "Spritpreis" number always holds the price to use — either
+        # hand-set, or last written by a live fetch. `fuel_price_source`
+        # just says which it currently is.
+        fuel_eur_l = self.planner_state.fuel_price_eur_l
         fp = self._fuel_price
         if fp is not None:
-            fuel_eur_l = fp.price_eur_per_l
             source = "tankerkoenig"
             station: str | None = fp.station
             distance: float | None = fp.distance_km
             fuel_type = fp.fuel_type
         else:
-            fuel_eur_l = self.planner_state.fuel_price_manual_eur_l
             source = "manuell"
             station = None
             distance = None

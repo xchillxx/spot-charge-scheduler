@@ -211,14 +211,12 @@ Tankerkönig API key:
 
 | Entity | Type | |
 |---|---|---|
-| Spritpreis | `sensor` | fuel price used for the comparison (€/L). Live cheapest-local Tankerkönig price when an API key is set, otherwise the manual fallback — the `quelle` attribute says which; live attrs also carry station + distance |
+| Spritpreis | `number` | €/L used for the comparison. Set it by hand; with a Tankerkönig API key the integration overwrites it hourly with the cheapest local price (same as the auto-calibrated capacity/power numbers). Attrs: `quelle` (`manuell` / `tankerkoenig`), station, distance |
 | Verbrenner-Break-even | `sensor` | **at/above how many ct/kWh the combustion car is cheaper per km.** Attrs: `guenstiger_jetzt` (eauto/verbrenner vs. the current spot price), ct/100 km each way, the assumptions used |
 | Verbrenner-Verbrauch | `number` | combustion car's L/100 km |
 | E-Auto-Verbrauch (ab Steckdose) | `number` | EV kWh/100 km incl. charging losses; auto-calibrated from the odometer + charge-energy statistics when both are configured, otherwise the value set here |
-| Spritpreis (manuell) | `number` | fallback €/L used whenever no live price is available; keep it roughly current until the API key is active |
 
-`break-even (ct/kWh) = L/100 km × fuel ct/L ÷ EV kWh/100 km`. With an API
-key, the fuel price updates hourly and overrides the manual value.
+`break-even (ct/kWh) = L/100 km × fuel ct/L ÷ EV kWh/100 km`.
 
 ## Upgrading from ≤ 0.12.0
 

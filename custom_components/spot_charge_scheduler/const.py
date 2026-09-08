@@ -100,11 +100,11 @@ DEFAULT_FUEL_TYPE = "diesel"
 DEFAULT_FUEL_RADIUS_KM = 5.0
 FUEL_FETCH_MIN_INTERVAL_SECONDS = 3600  # Tankerkönig asks for ~hourly polling
 FUEL_FETCH_RETRY_AFTER_FAILURE_SECONDS = 300
-# Manually-set fuel price (€/L) used for the break-even calc whenever a live
-# Tankerkönig price isn't available (no/pending API key, fetch failing, no
-# open station). A live price always wins; this just keeps the comparison
-# working with a sensible number in the meantime — editable via the
-# "Spritpreis (manuell)" number entity.
+# Starting fuel price (€/L) for the break-even calc. Lives on the
+# "Spritpreis" number entity: set it by hand, and once a Tankerkönig API
+# key is configured the coordinator overwrites it hourly with the cheapest
+# local price — same self-calibrating pattern as battery capacity / charge
+# power. Used as-is whenever no live price is available.
 DEFAULT_FUEL_PRICE_EUR_L = 1.75
 
 DEFAULT_ICE_CONSUMPTION_L_100KM = 6.5
