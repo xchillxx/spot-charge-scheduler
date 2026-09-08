@@ -202,8 +202,9 @@ class CheapThresholdSensor(_BaseSensor):
 
 
 class FuelPriceSensor(_BaseSensor):
-    """Cheapest local price for the configured fuel type, from Tankerkönig.
-    Unavailable until an API key is set and a first fetch succeeds."""
+    """Fuel price used for the comparison: the cheapest local Tankerkönig
+    price when available, otherwise the manually set fallback (the `quelle`
+    attribute says which)."""
 
     _attr_name = "Spritpreis"
     _attr_icon = "mdi:gas-station"
@@ -225,6 +226,7 @@ class FuelPriceSensor(_BaseSensor):
         if not c:
             return {}
         return {
+            "quelle": c.get("fuel_price_source"),
             "kraftstoffart": c.get("fuel_type"),
             "tankstelle": c.get("station"),
             "entfernung_km": c.get("station_distance_km"),
@@ -234,7 +236,8 @@ class FuelPriceSensor(_BaseSensor):
 class CombustionBreakEvenSensor(_BaseSensor):
     """Break-even electricity price: at/above this many ct/kWh, driving the
     combustion car costs the same per kilometre as charging. Below it, the
-    EV is cheaper. Unavailable until a fuel price is known."""
+    EV is cheaper. Works off the live fuel price when available, otherwise
+    the manually set fallback."""
 
     _attr_name = "Verbrenner-Break-even"
     _attr_icon = "mdi:scale-balance"
@@ -266,5 +269,6 @@ class CombustionBreakEvenSensor(_BaseSensor):
             "verbrenner_verbrauch_l_100km": c.get("ice_l_100km"),
             "eauto_verbrauch_kwh_100km": c.get("ev_kwh_100km"),
             "spritpreis_eur_l": c.get("fuel_price_eur_l"),
+            "spritpreis_quelle": c.get("fuel_price_source"),
             "kraftstoffart": c.get("fuel_type"),
         }

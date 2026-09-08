@@ -189,6 +189,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
+    async def async_set_fuel_price_manual_eur_l(self, value: float) -> None:
+        self.planner_state.fuel_price_manual_eur_l = value
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
     async def async_set_master_switch(self, value: bool) -> None:
         self.planner_state.master_switch_on = value
         self.planner_state.async_save()
@@ -337,16 +342,29 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
 
     def _combustion_comparison(self, now: datetime) -> dict | None:
         """Break-even electricity price: at/above how many €/kWh would the
-        combustion car cost the same per km. None until a fuel price is
-        available."""
-        fp = self._fuel_price
-        if fp is None:
-            return None
-        ice_l = self.planner_state.ice_consumption_l_100km
+        combustion car cost the same per km. Always computable — a live
+        Tankerkönig price when we have one, otherwise the manually set
+        fallback price (see ManualFuelPriceNumber)."""
         ev_kwh = self.planner_state.ev_consumption_kwh_100km
+        ice_l = self.planner_state.ice_consumption_l_100km
         if ev_kwh <= 0:
             return None
-        ice_eur_100km = ice_l * fp.price_eur_per_l
+
+        fp = self._fuel_price
+        if fp is not None:
+            fuel_eur_l = fp.price_eur_per_l
+            source = "tankerkoenig"
+            station: str | None = fp.station
+            distance: float | None = fp.distance_km
+            fuel_type = fp.fuel_type
+        else:
+            fuel_eur_l = self.planner_state.fuel_price_manual_eur_l
+            source = "manuell"
+            station = None
+            distance = None
+            fuel_type = str(self._config.get(CONF_FUEL_TYPE) or DEFAULT_FUEL_TYPE)
+
+        ice_eur_100km = ice_l * fuel_eur_l
         break_even_eur_kwh = ice_eur_100km / ev_kwh
         cur = self._current_electricity_price_eur_kwh(now)
         ev_eur_100km_now = ev_kwh * cur if cur is not None else None
@@ -355,10 +373,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             cheaper_now = "eauto" if cur < break_even_eur_kwh else "verbrenner"
         return {
             "break_even_eur_kwh": round(break_even_eur_kwh, 4),
-            "fuel_price_eur_l": fp.price_eur_per_l,
-            "fuel_type": fp.fuel_type,
-            "station": fp.station,
-            "station_distance_km": fp.distance_km,
+            "fuel_price_eur_l": round(fuel_eur_l, 3),
+            "fuel_price_source": source,
+            "fuel_type": fuel_type,
+            "station": station,
+            "station_distance_km": distance,
             "ice_l_100km": ice_l,
             "ev_kwh_100km": ev_kwh,
             "ice_eur_100km": round(ice_eur_100km, 2),

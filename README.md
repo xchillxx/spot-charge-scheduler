@@ -120,7 +120,7 @@ Settings → Devices & Services → Add Integration → "Spot Charge Scheduler".
 | Price source | yes | only "Tibber" today |
 | Tibber home nickname | yes | as shown in the Tibber app, e.g. "Haus" |
 | Battery capacity (kWh) | yes | starting estimate; overwritten automatically once enough real sessions are observed |
-| Tankerkönig API key | no | free from [tankerkoenig.de](https://creativecommons.tankerkoenig.de/) — turns on the fuel-price + combustion break-even sensors |
+| Tankerkönig API key | no | free from [tankerkoenig.de](https://creativecommons.tankerkoenig.de/) — replaces the manual fallback price with the live cheapest-local one (hourly) |
 | Fuel type | — | `e5` / `e10` / `diesel` for the comparison |
 | Fuel-station search radius | — | km around your Home Assistant location (max 25) |
 | Odometer sensor | no | `sensor.*` in km; with the next field, self-calibrates the EV's kWh/100 km from the socket |
@@ -204,20 +204,21 @@ sections:
           - sensor.spot_charge_scheduler_kalibrierte_ladeleistung
 ```
 
-## Combustion-engine comparison (optional)
+## Combustion-engine comparison
 
-With a (free) Tankerkönig API key plus the two consumption numbers, two
-sensors appear:
+Always on (it just needs the consumption numbers), refined by a (free)
+Tankerkönig API key:
 
 | Entity | Type | |
 |---|---|---|
-| Spritpreis | `sensor` | cheapest local price for the chosen fuel (€/L), hourly; attrs: station, distance |
+| Spritpreis | `sensor` | fuel price used for the comparison (€/L). Live cheapest-local Tankerkönig price when an API key is set, otherwise the manual fallback — the `quelle` attribute says which; live attrs also carry station + distance |
 | Verbrenner-Break-even | `sensor` | **at/above how many ct/kWh the combustion car is cheaper per km.** Attrs: `guenstiger_jetzt` (eauto/verbrenner vs. the current spot price), ct/100 km each way, the assumptions used |
 | Verbrenner-Verbrauch | `number` | combustion car's L/100 km |
 | E-Auto-Verbrauch (ab Steckdose) | `number` | EV kWh/100 km incl. charging losses; auto-calibrated from the odometer + charge-energy statistics when both are configured, otherwise the value set here |
+| Spritpreis (manuell) | `number` | fallback €/L used whenever no live price is available; keep it roughly current until the API key is active |
 
-`break-even (ct/kWh) = L/100 km × fuel ct/L ÷ EV kWh/100 km`. Everything
-degrades safe: no API key → both sensors just stay unavailable.
+`break-even (ct/kWh) = L/100 km × fuel ct/L ÷ EV kWh/100 km`. With an API
+key, the fuel price updates hourly and overrides the manual value.
 
 ## Upgrading from ≤ 0.12.0
 
