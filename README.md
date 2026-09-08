@@ -143,6 +143,61 @@ All fields are editable later via the integration's "Configure" option.
 | Kalibrierte Kapazität | `sensor` | The calibrator's current capacity estimate + how many sessions it's based on |
 | Kalibrierte Ladeleistung | `sensor` | The calibrator's current power estimate + how many sessions it's based on |
 
+## Suggested dashboard
+
+The integration only creates entities — build the view however you like.
+This is the recommended layout: the calendar as a read-only overview, the
+master switch, then one card per slot with **aktiv on top** (all six always
+shown so an unused slot can still be switched on), and the opportunistic
+top-up controls. Paste into a `type: sections` view (or adapt the cards for
+a masonry view).
+
+```yaml
+type: sections
+sections:
+  - type: grid
+    cards:
+      - type: calendar
+        title: Ladeplan-Kalender
+        entities: [calendar.spot_charge_scheduler_ladeplan_kalender]
+        initial_view: dayGridMonth
+      - type: tile
+        entity: switch.spot_charge_scheduler_lademodus_aktiv
+        features: [{ type: toggle }]
+  - type: grid
+    cards:
+      # repeat this card for slots 1..6
+      - type: entities
+        title: Slot 1
+        entities:
+          - entity: switch.spot_charge_scheduler_slot_1_aktiv
+            name: aktiv (aus = pausiert)
+          - entity: text.spot_charge_scheduler_slot_1_name
+            name: Name
+          - entity: number.spot_charge_scheduler_slot_1_ziel_soc
+            name: Ziel-SoC
+          - entity: time.spot_charge_scheduler_slot_1_uhrzeit
+            name: Uhrzeit
+          - entity: number.spot_charge_scheduler_slot_1_rhythmus_tage
+            name: Rhythmus (Tage)
+  - type: grid
+    cards:
+      - type: entities
+        title: Opportunistisches Top-up
+        entities:
+          - entity: number.spot_charge_scheduler_billig_schwelle_perzentil
+            name: Billig-Schwelle (Perzentil)
+          - entity: sensor.spot_charge_scheduler_billig_schwelle
+            name: = aktuell in ct/kWh
+      - type: entities
+        title: Diagnose
+        entities:
+          - sensor.spot_charge_scheduler_ladeplan
+          - sensor.spot_charge_scheduler_nachster_zyklus
+          - sensor.spot_charge_scheduler_kalibrierte_kapazitat
+          - sensor.spot_charge_scheduler_kalibrierte_ladeleistung
+```
+
 ## Upgrading from ≤ 0.12.0
 
 The old model — cycles authored as calendar events, per-occurrence drag
