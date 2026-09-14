@@ -179,6 +179,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
+    async def async_set_expensive_percentile(self, value: float) -> None:
+        self.planner_state.expensive_percentile = value
+        self.planner_state.async_save()
+        await self.async_request_refresh()
+
     async def async_set_ice_consumption_l_100km(self, value: float) -> None:
         self.planner_state.ice_consumption_l_100km = value
         self.planner_state.async_save()
@@ -254,6 +259,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         cheap_threshold = price_baseline.cheap_price_threshold(
             self.planner_state.price_history, now, self.planner_state.opportunistic_percentile
         )
+        # Same percentile function, opposite end of the distribution — see
+        # the "Teuer-Schwelle" sensor. Diagnostic only, not read by the plan.
+        expensive_threshold = price_baseline.cheap_price_threshold(
+            self.planner_state.price_history, now, self.planner_state.expensive_percentile
+        )
 
         plan = self._compute_plan(
             now, target_dt, target_soc, current_soc, car_charge_limit, cheap_threshold
@@ -280,6 +290,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "target_datetime": target_dt,
             "car_charge_limit": car_charge_limit,
             "cheap_price_threshold": cheap_threshold,
+            "expensive_price_threshold": expensive_threshold,
             "defer_for_data": defer_for_data,
             "battery_capacity_kwh": self.planner_state.battery_capacity_kwh,
             "capacity_sample_count": len(self.planner_state.capacity_samples),

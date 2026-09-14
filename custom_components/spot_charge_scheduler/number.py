@@ -24,6 +24,7 @@ async def async_setup_entry(
         BatteryCapacityNumber(coordinator, entry),
         ChargePowerNumber(coordinator, entry),
         OpportunisticPercentileNumber(coordinator, entry),
+        ExpensivePercentileNumber(coordinator, entry),
         IceConsumptionNumber(coordinator, entry),
         EvConsumptionNumber(coordinator, entry),
         FuelPriceNumber(coordinator, entry),
@@ -128,6 +129,36 @@ class OpportunisticPercentileNumber(_BaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_opportunistic_percentile(value)
+
+
+class ExpensivePercentileNumber(_BaseNumber):
+    """Diagnostic mirror of OpportunisticPercentileNumber: how expensive a
+    slot has to be, relative to the last few days of observed prices,
+    before it counts as "expensive" — at/above this percentile of that
+    window. Not read by the planner and doesn't actuate anything; purely
+    informational (e.g. to decide whether right now is expensive enough
+    that a free-charging credit elsewhere is worth more than home
+    charging). The companion "Teuer-Schwelle" sensor shows what this
+    percentile currently works out to in ct/kWh."""
+
+    _attr_name = "Teuer-Schwelle (Perzentil)"
+    _attr_icon = "mdi:cash-remove"
+    _attr_native_min_value = 50
+    _attr_native_max_value = 99
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_expensive_percentile"
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.planner_state.expensive_percentile
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_expensive_percentile(value)
 
 
 class IceConsumptionNumber(_BaseNumber):

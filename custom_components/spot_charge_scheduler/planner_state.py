@@ -28,6 +28,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DEFAULT_EV_CONSUMPTION_KWH_100KM,
+    DEFAULT_EXPENSIVE_PERCENTILE,
     DEFAULT_FUEL_PRICE_EUR_L,
     DEFAULT_ICE_CONSUMPTION_L_100KM,
     DEFAULT_OPPORTUNISTIC_PERCENTILE,
@@ -132,6 +133,10 @@ class PlannerState:
         # price_baseline.cheap_price_threshold). Freely editable live via the
         # "Billig-Schwelle (Perzentil)" number entity.
         self.opportunistic_percentile: float = DEFAULT_OPPORTUNISTIC_PERCENTILE
+        # Diagnostic mirror of the above: a slot counts as "expensive" at/above
+        # this percentile of the same price window. Not read by the planner —
+        # see the "Teuer-Schwelle" sensor.
+        self.expensive_percentile: float = DEFAULT_EXPENSIVE_PERCENTILE
         # Combustion-engine comparison inputs (see coordinator break-even calc).
         # ev_consumption_kwh_100km is auto-overwritten from recorder statistics
         # once there's enough odometer/energy history (consumption_estimator.py).
@@ -177,6 +182,9 @@ class PlannerState:
         self.power_samples = data.get("power_samples", [])
         self.opportunistic_percentile = data.get(
             "opportunistic_percentile", DEFAULT_OPPORTUNISTIC_PERCENTILE
+        )
+        self.expensive_percentile = data.get(
+            "expensive_percentile", DEFAULT_EXPENSIVE_PERCENTILE
         )
         self.ice_consumption_l_100km = data.get(
             "ice_consumption_l_100km", DEFAULT_ICE_CONSUMPTION_L_100KM
@@ -240,6 +248,7 @@ class PlannerState:
             "charge_power_kw": self.charge_power_kw,
             "power_samples": self.power_samples,
             "opportunistic_percentile": self.opportunistic_percentile,
+            "expensive_percentile": self.expensive_percentile,
             "ice_consumption_l_100km": self.ice_consumption_l_100km,
             "ev_consumption_kwh_100km": self.ev_consumption_kwh_100km,
             "fuel_price_eur_l": self.fuel_price_eur_l,

@@ -155,6 +155,16 @@ OPPORTUNISTIC_LOOKBACK_DAYS = 8
 # ~2 days of 15-minute slots).
 OPPORTUNISTIC_MIN_SAMPLES = 192
 
+# --- Expensive threshold (diagnostic only, no actuation) ---
+# The mirror-image of the percentile above: the price at/above which a slot
+# counts as "expensive" against the same last OPPORTUNISTIC_LOOKBACK_DAYS
+# days of observed prices (see price_baseline.cheap_price_threshold, called
+# with this percentile instead). Purely informational today — e.g. to
+# decide "grid is expensive enough right now that a free-charging credit
+# elsewhere would be worth more than charging at home". Live-tunable via
+# the "Teuer-Schwelle (Perzentil)" number entity.
+DEFAULT_EXPENSIVE_PERCENTILE = 90.0
+
 # How far back/forward from "now" to expand cycle occurrences when looking
 # for the currently active target (schedule.find_active_occurrence). The
 # backward half catches a just-passed, still-unmet deadline (the "charge

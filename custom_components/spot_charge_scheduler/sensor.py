@@ -25,6 +25,7 @@ async def async_setup_entry(
         CalibratedCapacitySensor(coordinator, entry),
         CalibratedChargePowerSensor(coordinator, entry),
         CheapThresholdSensor(coordinator, entry),
+        ExpensiveThresholdSensor(coordinator, entry),
         CombustionBreakEvenSensor(coordinator, entry),
     ])
 
@@ -197,6 +198,37 @@ class CheapThresholdSensor(_BaseSensor):
                 data.get("cheap_price_threshold") is not None
                 and data.get("car_charge_limit") is not None
             ),
+        }
+
+
+class ExpensiveThresholdSensor(_BaseSensor):
+    """Diagnostic mirror of CheapThresholdSensor: what the "Teuer-Schwelle
+    (Perzentil)" number currently works out to in ct/kWh, against the same
+    last OPPORTUNISTIC_LOOKBACK_DAYS days of observed prices. Not read by
+    the planner — purely a "is right now unusually expensive?" readout.
+    Unknown until the price archive has enough history to trust the
+    percentile (see price_baseline.cheap_price_threshold)."""
+
+    _attr_name = "Teuer-Schwelle"
+    _attr_icon = "mdi:cash-clock"
+    _attr_native_unit_of_measurement = "ct/kWh"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_expensive_threshold"
+
+    @property
+    def native_value(self) -> float | None:
+        data = self.coordinator.data or {}
+        eur_kwh = data.get("expensive_price_threshold")
+        return round(eur_kwh * 100, 2) if eur_kwh is not None else None
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "perzentil": self.coordinator.planner_state.expensive_percentile,
+            "zeitraum_tage": OPPORTUNISTIC_LOOKBACK_DAYS,
         }
 
 
