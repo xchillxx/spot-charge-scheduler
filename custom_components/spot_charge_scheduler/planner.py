@@ -155,7 +155,13 @@ def compute_plan(
 
     bridged_starts = _bridge_gaps_by_price(eligible_sorted, selected, PRICE_BRIDGE_TOLERANCE)
     selected = [p for p in eligible_sorted if p.start in bridged_starts]
-    bonus_count = sum(1 for p in selected if p.start not in {m.start for m in mandatory})
+    # NOT len(selected) - len(mandatory): bridging can add gap-filler slots
+    # between two selected slots purely because they're price-adjacent, with
+    # no regard for cheap_price_threshold at all — counting those as
+    # "opportunistic" claimed slots were cheap when they can be priced far
+    # above the threshold. The true count is exactly what was picked by the
+    # cheap-threshold rule before bridging ever runs.
+    bonus_count = len(opportunistic)
 
     estimated_cost_eur = sum(p.price * slot_kwh for p in selected)
     # Completion tracks the guaranteed floor only — opportunistic slots that
