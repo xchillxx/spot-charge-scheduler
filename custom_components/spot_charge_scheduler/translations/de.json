@@ -76,5 +76,21 @@
         "diesel": "Diesel"
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "plan": {
+        "state": {
+          "kein_ziel": "Kein Ziel",
+          "ziel_erreicht": "Ziel erreicht",
+          "opportunistisch": "Lädt opportunistisch weiter",
+          "nicht_zuhause": "Nicht zuhause",
+          "wartet_auf_daten": "Wartet auf Preisdaten",
+          "erreichbar": "Plant günstige Slots",
+          "nicht_erreichbar": "Zeit knapp – lädt durchgehend",
+          "pausiert_pv_modus": "Pausiert (PV-Modus)"
+        }
+      }
+    }
   }
 }

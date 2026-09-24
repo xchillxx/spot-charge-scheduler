@@ -76,5 +76,21 @@
         "diesel": "Diesel"
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "plan": {
+        "state": {
+          "kein_ziel": "No target",
+          "ziel_erreicht": "Target reached",
+          "opportunistisch": "Topping up opportunistically",
+          "nicht_zuhause": "Not at home",
+          "wartet_auf_daten": "Waiting for price data",
+          "erreichbar": "Planning cheap slots",
+          "nicht_erreichbar": "Time is short – charging continuously",
+          "pausiert_pv_modus": "Paused (PV mode)"
+        }
+      }
+    }
   }
 }

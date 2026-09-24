@@ -3,7 +3,7 @@ coordinator already computes every cycle, these just expose it for the
 dashboard (section 5's transparency requirement)."""
 from __future__ import annotations
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -45,6 +45,12 @@ class _BaseSensor(CoordinatorEntity[SpotChargeCoordinator], SensorEntity):
 class ChargePlanSensor(_BaseSensor):
     _attr_name = "Ladeplan"
     _attr_icon = "mdi:calendar-clock-outline"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_translation_key = "plan"
+    _attr_options = [
+        "kein_ziel", "ziel_erreicht", "opportunistisch", "nicht_zuhause",
+        "wartet_auf_daten", "erreichbar", "nicht_erreichbar", "pausiert_pv_modus",
+    ]
 
     def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
