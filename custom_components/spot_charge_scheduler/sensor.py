@@ -53,6 +53,8 @@ class ChargePlanSensor(_BaseSensor):
     @property
     def native_value(self) -> str:
         plan = self.coordinator.data.get("plan") if self.coordinator.data else None
+        if self.coordinator.data and self.coordinator.data.get("paused_by_mode"):
+            return "pausiert_pv_modus"
         if plan is None or self.coordinator.data.get("target_datetime") is None:
             return "kein_ziel"
         if plan.target_reachable is None:

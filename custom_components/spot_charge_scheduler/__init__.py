@@ -5,7 +5,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import CONF_CHARGING_STATUS_SENSOR, CONF_PLUGGED_IN_SENSOR, DOMAIN, PLATFORMS
+from .const import (
+    CONF_CHARGING_STATUS_SENSOR,
+    CONF_PAUSE_MODE_SENSOR,
+    CONF_PLUGGED_IN_SENSOR,
+    DOMAIN,
+    PLATFORMS,
+)
 from .coordinator import SpotChargeCoordinator
 
 
@@ -26,6 +32,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for e in (
             coordinator._config.get(CONF_CHARGING_STATUS_SENSOR),
             coordinator._config.get(CONF_PLUGGED_IN_SENSOR),
+            coordinator._config.get(CONF_PAUSE_MODE_SENSOR),
         )
         if e
     ]

@@ -75,6 +75,12 @@ CONF_CHARGE_POWER_SENSOR = "charge_power_sensor_entity"
 # entity unavailable, and nothing changes: only the guaranteed target is
 # pursued, exactly as before.
 CONF_CAR_CHARGE_LIMIT_ENTITY = "car_charge_limit_entity"
+# Optional hands-off gate: while this sensor's state equals the given value
+# (e.g. a wallbox working mode "PV Power" handled by another controller),
+# the scheduler never touches the charge switch.
+CONF_PAUSE_MODE_SENSOR = "pause_mode_sensor_entity"
+CONF_PAUSE_MODE_VALUE = "pause_mode_value"
+DEFAULT_PAUSE_MODE_VALUE = "PV Power"
 CONF_PRICE_SOURCE = "price_source"
 CONF_TIBBER_HOME_NICKNAME = "tibber_home_nickname"
 CONF_BATTERY_CAPACITY_KWH_DEFAULT = "battery_capacity_kwh_default"

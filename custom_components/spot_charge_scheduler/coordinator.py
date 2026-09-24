@@ -22,6 +22,9 @@ from . import (
 from .const import (
     CONF_BATTERY_CAPACITY_KWH_DEFAULT,
     CONF_CAR_CHARGE_LIMIT_ENTITY,
+    CONF_PAUSE_MODE_SENSOR,
+    CONF_PAUSE_MODE_VALUE,
+    DEFAULT_PAUSE_MODE_VALUE,
     CONF_CHARGE_ENERGY_ENTITY,
     CONF_CHARGE_POWER_KW,
     CONF_CHARGE_POWER_SENSOR,
@@ -197,6 +200,19 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self.planner_state.async_save()
         await self.async_request_refresh()
 
+    def is_paused_by_mode(self) -> bool:
+        """True while the configured pause-mode sensor shows the pause value
+        (another controller owns the wallbox). Unknown/unavailable or an
+        unconfigured sensor never pauses."""
+        entity = self._config.get(CONF_PAUSE_MODE_SENSOR)
+        if not entity:
+            return False
+        state = self.hass.states.get(entity)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return False
+        value = self._config.get(CONF_PAUSE_MODE_VALUE) or DEFAULT_PAUSE_MODE_VALUE
+        return state.state == value
+
     def oneoff_target_today(self, now: datetime) -> float | None:
         st = self.planner_state
         if st.oneoff_target_soc is None or st.oneoff_date != now.date().isoformat():
@@ -340,6 +356,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "charge_power_kw": self.planner_state.charge_power_kw,
             "power_sample_count": len(self.planner_state.power_samples),
             "master_switch_on": self.planner_state.master_switch_on,
+            "paused_by_mode": self.is_paused_by_mode(),
             "plan": plan,
             "combustion": combustion,
         }
@@ -536,6 +553,8 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
     ) -> None:
         if not self.planner_state.master_switch_on:
             return  # hands-off: don't touch the charge switch at all
+        if self.is_paused_by_mode():
+            return  # another controller (e.g. PV-surplus) owns the wallbox
 
         desired_on = self._decide_desired_state(
             plan, current_soc, target_soc, plugged_in, is_home, defer_for_data, now, target_dt
