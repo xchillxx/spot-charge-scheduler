@@ -547,12 +547,22 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         if desired_on == currently_on:
             return
 
-        await self.hass.services.async_call(
-            "switch",
-            "turn_on" if desired_on else "turn_off",
-            {"entity_id": switch_entity},
-            blocking=True,
-        )
+        # A vehicle-API hiccup (car asleep/offline, cloud error) must not abort
+        # the whole cycle — an uncaught raise here makes every entity of this
+        # integration unavailable until the next successful poll. The next
+        # cycle simply retries.
+        try:
+            await self.hass.services.async_call(
+                "switch",
+                "turn_on" if desired_on else "turn_off",
+                {"entity_id": switch_entity},
+                blocking=True,
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "Could not switch %s %s; will retry next cycle",
+                switch_entity, "on" if desired_on else "off", exc_info=True,
+            )
 
     def _decide_desired_state(
         self,
