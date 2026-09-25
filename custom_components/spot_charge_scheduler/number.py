@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, NUM_CYCLE_SLOTS
+from .const import CONF_CAR_CHARGE_LIMIT_ENTITY, DOMAIN, NUM_CYCLE_SLOTS
 from .coordinator import SpotChargeCoordinator
 from .device import hub_device_info
 
@@ -27,6 +27,7 @@ async def async_setup_entry(
         OpportunisticPercentileNumber(coordinator, entry),
         ExpensivePercentileNumber(coordinator, entry),
         OneoffTargetNumber(coordinator, entry),
+        CarChargeLimitNumber(coordinator, entry),
         IceConsumptionNumber(coordinator, entry),
         EvConsumptionNumber(coordinator, entry),
         FuelPriceNumber(coordinator, entry),
@@ -187,6 +188,51 @@ class OneoffTargetNumber(_BaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator.async_set_oneoff_target(value)
+
+
+class CarChargeLimitNumber(_BaseNumber):
+    """Input-box proxy for the car's own charge-limit entity (the ceiling for
+    opportunistic top-up), so the limit can be typed instead of dragged on a
+    slider that is easy to nudge by accident. Reads and writes the entity
+    configured as the car charge-limit; unavailable without one."""
+
+    _attr_name = "Auto-Ladelimit"
+    _attr_icon = "mdi:battery-charging-80"
+    _attr_native_min_value = 50
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "%"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_car_charge_limit"
+
+    @property
+    def _source(self) -> str | None:
+        return self.coordinator._config.get(CONF_CAR_CHARGE_LIMIT_ENTITY)
+
+    @property
+    def available(self) -> bool:
+        return self._source is not None and self.native_value is not None
+
+    @property
+    def native_value(self) -> float | None:
+        if not self._source:
+            return None
+        state = self.hass.states.get(self._source)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        try:
+            return float(state.state)
+        except ValueError:
+            return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.hass.services.async_call(
+            "number", "set_value", {"entity_id": self._source, "value": value}, blocking=True
+        )
+        await self.coordinator.async_request_refresh()
 
 
 class IceConsumptionNumber(_BaseNumber):
