@@ -202,6 +202,9 @@ CALENDAR_MAX_LOOKAHEAD_DAYS = 365
 # required — i.e. waiting can't itself cause the deadline to be missed.
 # Tunable: shrink it if data usually arrives sooner than assumed here.
 DATA_WAIT_SAFETY_BUFFER_HOURS = 12.0
+# With no eligible price slot known at all, keep waiting while at least this
+# much slack (hours) remains before the deadline.
+NO_DATA_MIN_SLACK_HOURS = 1.0
 
 # Rolling per-slot price archive (planner_state.price_history) built from
 # every price fetch this integration already makes — used to judge whether

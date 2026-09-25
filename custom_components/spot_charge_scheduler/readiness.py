@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .const import DATA_WAIT_SAFETY_BUFFER_HOURS, PRICE_BRIDGE_TOLERANCE
+from .const import DATA_WAIT_SAFETY_BUFFER_HOURS, NO_DATA_MIN_SLACK_HOURS, PRICE_BRIDGE_TOLERANCE
 from .planner import SLOT_HOURS
 
 
@@ -20,6 +20,7 @@ def should_defer_for_better_data(
     data_covers_target: bool,
     best_known_price: float | None,
     historical_typical_price: float | None,
+    has_eligible_prices: bool = True,
 ) -> bool:
     """True = hold off actuating and wait; False = go ahead and act on the
     best plan available now.
@@ -37,6 +38,12 @@ def should_defer_for_better_data(
     hours_until_target = (target_dt - now).total_seconds() / 3600
     required_hours = required_slot_count * SLOT_HOURS
     slack_hours = hours_until_target - required_hours
+    if not has_eligible_prices:
+        # No price slot known at all before the deadline (fresh restart, failed
+        # fetch): "act on the best plan" would mean charging continuously at
+        # any price. Wait for data for as long as at least NO_DATA_MIN_SLACK_HOURS
+        # of slack remain, however tight the normal safety buffer is.
+        return slack_hours >= NO_DATA_MIN_SLACK_HOURS
     if slack_hours < DATA_WAIT_SAFETY_BUFFER_HOURS:
         return False  # can't risk it — act now on the best information available
 

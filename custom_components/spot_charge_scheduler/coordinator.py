@@ -518,6 +518,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         return readiness.should_defer_for_better_data(
             now, target_dt, plan.required_slot_count, data_covers_target,
             best_known_price, historical_typical_price,
+            has_eligible_prices=plan.available_slot_count > 0,
         )
 
     def _compute_plan(
