@@ -131,6 +131,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self._last_fuel_fetch: datetime | None = None
         self._fuel_fetch_retry_interval: float = FUEL_FETCH_MIN_INTERVAL_SECONDS
         self._last_ev_recalc: datetime | None = None
+        # Charge-switch failure backoff (see _actuate_switch): consecutive
+        # failures, earliest next attempt, and the last error for display.
+        self._act_fail_count = 0
+        self._act_retry_at: datetime | None = None
+        self.actuation_error: dict | None = None
 
     async def async_setup(self) -> None:
         await self.planner_state.async_load()
@@ -357,6 +362,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "power_sample_count": len(self.planner_state.power_samples),
             "master_switch_on": self.planner_state.master_switch_on,
             "paused_by_mode": self.is_paused_by_mode(),
+            "actuation_error": self.actuation_error,
             "plan": plan,
             "combustion": combustion,
         }
@@ -564,12 +570,18 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         current_state = self.hass.states.get(switch_entity)
         currently_on = current_state is not None and current_state.state == "on"
         if desired_on == currently_on:
+            self._act_fail_count = 0
+            self._act_retry_at = None
+            self.actuation_error = None
             return
 
-        # A vehicle-API hiccup (car asleep/offline, cloud error) must not abort
-        # the whole cycle — an uncaught raise here makes every entity of this
-        # integration unavailable until the next successful poll. The next
-        # cycle simply retries.
+        # A vehicle-API failure (car asleep, cloud error, or the vehicle API
+        # rejecting unsigned commands with 403) must not abort the cycle nor
+        # be hammered every minute: the underlying client retries for ~25 s
+        # per attempt. Back off exponentially (1, 2, 5, 10 min) and surface
+        # the error; the first success clears everything.
+        if self._act_retry_at is not None and now < self._act_retry_at:
+            return
         try:
             await self.hass.services.async_call(
                 "switch",
@@ -577,11 +589,27 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
                 {"entity_id": switch_entity},
                 blocking=True,
             )
-        except Exception:  # noqa: BLE001
+        except Exception as err:  # noqa: BLE001
+            self._act_fail_count += 1
+            delay = (1, 2, 5, 10)[min(self._act_fail_count, 4) - 1]
+            self._act_retry_at = now + timedelta(minutes=delay)
+            self.actuation_error = {
+                "zeit": now.isoformat(),
+                "schalter": switch_entity,
+                "aktion": "an" if desired_on else "aus",
+                "fehler": f"{type(err).__name__}: {err}".strip(": "),
+                "versuche": self._act_fail_count,
+                "naechster_versuch": self._act_retry_at.isoformat(),
+            }
             _LOGGER.warning(
-                "Could not switch %s %s; will retry next cycle",
-                switch_entity, "on" if desired_on else "off", exc_info=True,
+                "Could not switch %s %s (attempt %d); retrying in %d min",
+                switch_entity, "on" if desired_on else "off", self._act_fail_count, delay,
+                exc_info=self._act_fail_count == 1,
             )
+            return
+        self._act_fail_count = 0
+        self._act_retry_at = None
+        self.actuation_error = None
 
     def _decide_desired_state(
         self,

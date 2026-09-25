@@ -103,6 +103,7 @@ class ChargePlanSensor(_BaseSensor):
             "opportunistische_slots": plan.opportunistic_slot_count,
             "effektives_ladelimit_soc": plan.effective_ceiling_soc,
             "auto_ladelimit_soc": self.coordinator.data.get("car_charge_limit"),
+            "steuerung_fehler": self.coordinator.data.get("actuation_error"),
             "billig_schwelle_eur_kwh": (
                 round(t, 4)
                 if (t := self.coordinator.data.get("cheap_price_threshold")) is not None
