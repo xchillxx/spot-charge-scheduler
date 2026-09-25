@@ -155,19 +155,51 @@ def compute_plan(
 
     bridged_starts = _bridge_gaps_by_price(eligible_sorted, selected, PRICE_BRIDGE_TOLERANCE)
     selected = [p for p in eligible_sorted if p.start in bridged_starts]
+    opportunistic_starts = {p.start for p in opportunistic}
+
+    # Bridging can leave more slot-time in the plan than the energy needs:
+    # gap-fillers add slots, so the chronological run overshoots. Charging
+    # stops as soon as the target is reached, so walk the plan in time order
+    # and keep only what the required energy actually uses — the last kept
+    # slot counts partially. Only when the target is reachable; otherwise the
+    # plan already takes every slot and there is nothing to trim.
+    mandatory_kwh_total = max(0.0, target_soc - current_soc) / 100 * battery_capacity_kwh
+    needed_kwh = (
+        max(0.0, ceiling - current_soc) / 100 * battery_capacity_kwh
+        if opportunistic
+        else mandatory_kwh_total
+    )
+    floor_done: datetime | None = None
+    if target_reachable and selected and needed_kwh > 0:
+        kept: list[PricePoint] = []
+        cum = 0.0
+        estimated_cost_eur = 0.0
+        for p in selected:
+            if cum >= needed_kwh - 1e-9:
+                break
+            take = min(slot_kwh, needed_kwh - cum)
+            estimated_cost_eur += p.price * take
+            if floor_done is None and cum + take >= mandatory_kwh_total - 1e-9:
+                floor_done = p.start + SLOT_DURATION * (max(0.0, mandatory_kwh_total - cum) / slot_kwh)
+            kept.append(p)
+            cum += take
+        selected = kept
+    else:
+        estimated_cost_eur = sum(p.price * slot_kwh for p in selected)
+
     # NOT len(selected) - len(mandatory): bridging can add gap-filler slots
     # between two selected slots purely because they're price-adjacent, with
     # no regard for cheap_price_threshold at all — counting those as
     # "opportunistic" claimed slots were cheap when they can be priced far
-    # above the threshold. The true count is exactly what was picked by the
-    # cheap-threshold rule before bridging ever runs.
-    bonus_count = len(opportunistic)
+    # above the threshold. Count only slots the cheap-threshold rule picked.
+    bonus_count = sum(1 for p in selected if p.start in opportunistic_starts)
 
-    estimated_cost_eur = sum(p.price * slot_kwh for p in selected)
     # Completion tracks the guaranteed floor only — opportunistic slots that
     # land later must not make the promised target look later than it is.
     mandatory_by_start = sorted(mandatory, key=lambda p: p.start)
-    if mandatory_by_start:
+    if floor_done is not None:
+        estimated_completion = floor_done
+    elif mandatory_by_start:
         estimated_completion = mandatory_by_start[-1].start + SLOT_DURATION
     elif current_soc >= target_soc:
         estimated_completion = now
