@@ -119,7 +119,7 @@ class OpportunisticPercentileNumber(_BaseNumber):
     _attr_native_max_value = 50
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "%"
-    _attr_mode = NumberMode.SLIDER
+    _attr_mode = NumberMode.BOX
 
     def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
@@ -149,7 +149,7 @@ class ExpensivePercentileNumber(_BaseNumber):
     _attr_native_max_value = 99
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "%"
-    _attr_mode = NumberMode.SLIDER
+    _attr_mode = NumberMode.BOX
 
     def __init__(self, coordinator: SpotChargeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
