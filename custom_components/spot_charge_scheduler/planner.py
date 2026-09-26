@@ -110,7 +110,13 @@ def compute_plan(
 
     slot_kwh = charge_power_kw * SLOT_HOURS
 
-    eligible = [p for p in price_points if now <= p.start < target_datetime]
+    # A slot stays eligible until it has fully elapsed: filtering on
+    # `p.start >= now` dropped the running slot from the plan one cycle after
+    # it began, so "is the current slot in the plan" was never true and the
+    # charge switch was never turned on.
+    eligible = [
+        p for p in price_points if now < p.start + SLOT_DURATION and p.start < target_datetime
+    ]
     available_slot_count = len(eligible)
 
     if slot_kwh <= 0:
