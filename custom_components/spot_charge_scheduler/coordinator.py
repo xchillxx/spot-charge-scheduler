@@ -136,6 +136,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         self._act_fail_count = 0
         self._act_retry_at: datetime | None = None
         self.actuation_error: dict | None = None
+        self.last_decision: dict | None = None
 
     async def async_setup(self) -> None:
         await self.planner_state.async_load()
@@ -363,6 +364,7 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
             "master_switch_on": self.planner_state.master_switch_on,
             "paused_by_mode": self.is_paused_by_mode(),
             "actuation_error": self.actuation_error,
+            "last_decision": self.last_decision,
             "plan": plan,
             "combustion": combustion,
         }
@@ -570,6 +572,20 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         switch_entity = self._config[CONF_CHARGE_SWITCH]
         current_state = self.hass.states.get(switch_entity)
         currently_on = current_state is not None and current_state.state == "on"
+        # Everything the decision hinged on, for the plan sensor's
+        # "entscheidung" attribute — makes "why didn't it switch?" answerable.
+        self.last_decision = {
+            "zeit": now.isoformat(),
+            "soll_an": desired_on,
+            "schalter_ist_an": currently_on,
+            "schalter_zustand": current_state.state if current_state else None,
+            "im_slot": any(s.start <= now < s.start + SLOT_DURATION for s in plan.slots),
+            "soc": current_soc,
+            "ziel_soc": target_soc,
+            "angesteckt": plugged_in,
+            "zuhause": is_home,
+            "wartet_auf_daten": defer_for_data,
+        }
         if desired_on == currently_on:
             self._act_fail_count = 0
             self._act_retry_at = None
@@ -583,6 +599,11 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         # the error; the first success clears everything.
         if self._act_retry_at is not None and now < self._act_retry_at:
             return
+        _LOGGER.info(
+            "Switching %s %s (in slot: %s, soc: %s, target: %s)",
+            switch_entity, "on" if desired_on else "off",
+            self.last_decision["im_slot"], current_soc, target_soc,
+        )
         try:
             await self.hass.services.async_call(
                 "switch",
