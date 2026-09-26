@@ -484,7 +484,12 @@ class SpotChargeCoordinator(DataUpdateCoordinator):
         ).total_seconds() < self._price_fetch_retry_interval:
             return
         try:
-            self._cached_prices = await self._price_provider.async_get_prices(self.hass, now, target_dt)
+            # Start at the beginning of the running 15-min slot, not at `now`:
+            # a price service returning slots starting at/after `now` omits
+            # the slot that is running right now, which would then never be
+            # in the plan (and the switch never turned on) until the next slot.
+            slot_start = now.replace(minute=now.minute - now.minute % 15, second=0, microsecond=0)
+            self._cached_prices = await self._price_provider.async_get_prices(self.hass, slot_start, target_dt)
             self.planner_state.price_history = price_baseline.merge_observations(
                 self.planner_state.price_history, self._cached_prices, now
             )
